@@ -13,8 +13,10 @@ import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
+import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
@@ -23,10 +25,12 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -43,10 +47,12 @@ public class AdminAnnouncementManagementService {
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
     private final AnnouncementApplicationScheduleRepository schedules;
+    private final SupplyTargetRepository targets;
 
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
-            AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules) {
+            AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
+            SupplyTargetRepository targets) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
@@ -54,6 +60,7 @@ public class AdminAnnouncementManagementService {
         this.changes = changes;
         this.json = json;
         this.schedules = schedules;
+        this.targets = targets;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
@@ -66,15 +73,57 @@ public class AdminAnnouncementManagementService {
 
     public AdminAnnouncementDetail detail(long id) {
         var announcement = find(id);
+        var supplies = rows.findAllByAnnouncement(announcement);
+        List<SupplyTarget> conditions = List.of();
+        if (!supplies.isEmpty()) {
+            conditions = targets.findAllBySupplyRowIdIn(supplies.stream().map(SupplyRow::getId).toList());
+        }
         return new AdminAnnouncementDetail(summary(announcement), announcement.getSourceAnnouncementIdentifier(),
                 data(announcement), announcement.isApplicationScheduleReviewed(),
-                rows.findAllByAnnouncement(announcement).stream().map(this::rowData).toList(),
+                supplies.stream().map(this::rowData).toList(),
                 schedules.findAllByAnnouncementIdIn(List.of(id)).stream().map(schedule ->
                         new VerifiedApplicationSchedulesRequest.Schedule(
                                 scheduleComplexId(schedule), schedule.getSupplyRank(), schedule.getState(),
                                 schedule.getCondition(), schedule.getStartDate(), schedule.getEndDate(),
                                 schedule.getStartTime(), schedule.getEndTime(), schedule.getSourceUrl(),
-                                schedule.getSourcePage())).toList());
+                                schedule.getSourcePage())).toList(), conditions.stream().map(this::targetData).toList());
+    }
+
+    @Transactional
+    public AdminAnnouncementDetail updateTarget(long id, long targetId,
+            AdminSupplyTargetUpdateRequest request, String actor) {
+        var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
+        checkVersion(announcement, request.version());
+        if (announcement.isAdminDeleted()) {
+            throw new AdminDataConflictException("공고를 복구한 뒤 수정해 주세요.");
+        }
+        var target = targets.findById(targetId)
+                .filter(value -> value.getSupplyRow().getAnnouncement().getId().equals(id))
+                .orElseThrow(AnnouncementNotFoundException::new);
+        String before = json.writeValueAsString(targetData(target));
+        target.reviseByAdmin(request.target(), request.supplyRank(), request.supplyHouseholdCount(),
+                request.reserveCount(), request.rentalDeposit(), request.monthlyRent(), request.convertedDeposit(),
+                request.applicationCondition());
+        target.getSupplyRow().protectConditionsByAdmin();
+        announcement.recordAdminSupplyChange();
+        announcements.flush();
+        changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY_TARGET", actor, before,
+                auditedData(targetData(target), request.documentEvidence())));
+        return detail(id);
+    }
+
+    private AdminAnnouncementDetail.SupplyTargetItem targetData(SupplyTarget target) {
+        return new AdminAnnouncementDetail.SupplyTargetItem(target.getId(), target.getSupplyRow().getId(),
+                new AdminAnnouncementDetail.SupplyTargetData(target.getTarget(), target.getSupplyRank(),
+                        target.getSupplyHouseholdCount(), target.getReserveCount(), money(target.getRentalDeposit()),
+                        money(target.getMonthlyRent()), money(target.getConvertedDeposit()), target.getApplicationCondition()));
+    }
+
+    private String money(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        return value.stripTrailingZeros().toPlainString();
     }
 
     @Transactional

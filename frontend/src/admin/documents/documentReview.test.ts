@@ -47,4 +47,16 @@ describe('PDF 근거 검토', () => {
     expect(correctionBody(housingType, [{ ...proposal, field: 'householdCount', value: 0 }],
       document, 'https://example.com/a.pdf', '확인').householdCount).toBe(0)
   })
+  it('금액은 정확한 원 단위 정수 문자열로 받고 잘못된 단위와 숫자를 거부한다', () => {
+    const condition = reviewTarget('announcements', { ...detail, supplyTargets: [{ id: 9, supplyRowId: 8,
+      data: { target: '청년', rentalDeposit: null, monthlyRent: '0' } }] }, 'target:9')
+    const packet = (value: unknown, unit = '원') => JSON.stringify({ schemaVersion: 'document-review/v1',
+      targetKey: condition.key, version: condition.version, sha256: document.sha256, unresolved: [],
+      proposals: [{ ...proposal, field: 'rentalDeposit', value, unit, scope: '해당 공급대상' }] })
+    expect(parseReviewResult(packet('9007199254740993'), condition, document).proposals[0].value).toBe('9007199254740993')
+    for (const value of [10000000, '10만원', '1.5', '-1', '1000000000000000000', '1e7']) {
+      expect(() => parseReviewResult(packet(value), condition, document)).toThrow()
+    }
+    expect(() => parseReviewResult(packet('10000000', '만원'), condition, document)).toThrow()
+  })
 })

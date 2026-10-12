@@ -1602,9 +1602,10 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"false, false", "false, true", "true, false", "true, true"})
+    @CsvSource({"false, false, false", "false, true, false", "true, false, false", "true, true, false",
+            "false, false, true", "false, true, true", "true, false, true", "true, true, true"})
     void 확인한_빈_공급_응답은_LH_금액만_제거하고_관리자_금액은_유지한다(
-            boolean previousVersion, boolean mappingOnly
+            boolean previousVersion, boolean mappingOnly, boolean reviewedLhTarget
     ) {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
@@ -1613,6 +1614,14 @@ class LhAnnouncementEnrichmentServiceTest {
         mappingService.mapAll();
         enrichmentService.enrichAll();
         SupplyRow row = supplyRowRepository.findAll().getFirst();
+        if (reviewedLhTarget) {
+            SupplyTarget reviewed = supplyTargetRepository.findAll().getFirst();
+            reviewed.reviseByAdmin("청년", "1순위", 7, null,
+                    new BigDecimal("7000000"), new BigDecimal("70000"), null, "원문 확인");
+            row.protectConditionsByAdmin();
+            supplyTargetRepository.save(reviewed);
+            supplyRowRepository.save(row);
+        }
         supplyTargetRepository.save(SupplyTarget.create(
                 row, "관리자 확인 금액", null, null, null,
                 new BigDecimal("5000000"), new BigDecimal("100000"), null, null, 2
@@ -1653,7 +1662,16 @@ class LhAnnouncementEnrichmentServiceTest {
         }
 
         assertThat(supplyRowRepository.count()).isOne();
-        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+        if (reviewedLhTarget) {
+            assertThat(supplyTargetRepository.findAll()).hasSize(2).filteredOn(SupplyTarget::isAdminModified)
+                    .singleElement().satisfies(target -> {
+                        assertThat(target.getSourceSupplyTargetIdentifier()).startsWith("LH:");
+                        assertThat(target.getMonthlyRent()).isEqualByComparingTo("70000");
+                        assertThat(target.getLhAmountPreservedReason()).isNull();
+                    });
+        }
+        assertThat(supplyTargetRepository.findAll()).filteredOn(target -> target.getSourceSupplyTargetIdentifier() == null)
+                .singleElement().satisfies(target -> {
             assertThat(target.getSourceSupplyTargetIdentifier()).isNull();
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("100000");
         });

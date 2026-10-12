@@ -487,6 +487,76 @@ class AdminManagementIntegrationTest {
         assertThat(getData(path + "/changes").size()).isZero();
     }
 
+    @Test
+    void 공급대상_금액은_근거와_함께_수정하고_원천_덮어쓰기를_막는다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
+        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+                "LH:TEST", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
+                new java.math.BigDecimal("200000"), 0);
+        entityManager.persist(target);
+        entityManager.flush();
+        long version = getData(path).get("data").get("version").asLong();
+        String body = """
+                {"version":%d,"target":"청년","supplyRank":"1순위","supplyHouseholdCount":5,
+                 "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
+                 "applicationCondition":"공고문 참조","documentEvidence":%s}
+                """.formatted(version, documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\""));
+        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("12000000"))
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").value("0"));
+        assertThat(row.isAdminModified()).isTrue();
+        assertThat(target.updateFromSource("청년", "1순위", 9, java.math.BigDecimal.ONE,
+                java.math.BigDecimal.ONE, 0)).isFalse();
+        assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
+        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        var history = json.readTree(getData(path + "/changes").get(0).get("afterValue").asText());
+        assertThat(history.get("documentEvidence").get("citations").get(0).get("field").asText())
+                .isEqualTo("rentalDeposit");
+    }
+
+    @Test
+    void 공급대상_수정은_소속과_권한과_원단위_입력을_검증한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        long otherId = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
+        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+                "LH:VALIDATION", "청년", null, null, null, null, 0);
+        entityManager.persist(target);
+        entityManager.flush();
+        assertThat(target.isAdminModified()).isFalse();
+        long version = getData(path).get("data").get("version").asLong();
+        String body = """
+                {"version":%d,"target":"청년","rentalDeposit":"999999999999999999","monthlyRent":null}
+                """.formatted(version);
+        String endpoint = path + "/supply-targets/" + target.getId();
+        mvc.perform(put(endpoint).with(user(memberId()).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put(endpoint).with(user("admin").roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/admin/announcements/" + otherId + "/supply-targets/" + target.getId())
+                        .with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
+        for (String invalid : java.util.List.of(body.replace("999999999999999999", "-1"),
+                body.replace("999999999999999999", "1.5"),
+                body.replace("999999999999999999", "1000000000000000000"), body.replace("청년", " "))) {
+            mvc.perform(put(endpoint).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
+        }
+        assertThat(getData(path + "/changes").size()).isZero();
+        mvc.perform(put(endpoint).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("999999999999999999"))
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").isEmpty());
+    }
+
     private String documentEvidence() {
         return """
                 {"sourceUrl":"https://example.com/notice.pdf","fileName":"공고.pdf","sha256":"%s",
