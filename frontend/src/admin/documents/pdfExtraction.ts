@@ -1,3 +1,5 @@
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
+
 export type PdfTextItem = { str: string; x: number; y: number; width: number; height: number; endOfLine: boolean }
 export type ExtractedPage = { page: number; text: string; items: PdfTextItem[]; requiresOcr: boolean }
 export type ExtractedDocument = { fileName: string; sha256: string; totalPages: number; pages: ExtractedPage[] }
@@ -86,11 +88,9 @@ export async function openPdf(file: File, signal: AbortSignal): Promise<PdfSessi
   if (!new TextDecoder().decode(buffer.slice(0, 1024)).includes('%PDF-')) throw new Error('PDF 형식의 파일이 아닙니다.')
   const hash = await crypto.subtle.digest('SHA-256', buffer)
   const sha256 = [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('')
-  const [{ getDocument, GlobalWorkerOptions, version }, worker] = await Promise.all([
-    import('pdfjs-dist/legacy/build/pdf.mjs'), import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
-  ])
+  const { getDocument, GlobalWorkerOptions, version } = await import('pdfjs-dist/legacy/build/pdf.mjs')
   signal.throwIfAborted()
-  const workerSource = new URL(worker.default, window.location.href)
+  const workerSource = new URL(workerUrl, window.location.href)
   workerSource.searchParams.set('mime', 'javascript')
   GlobalWorkerOptions.workerSrc = workerSource.href
   const assets = `${import.meta.env.BASE_URL}pdfjs-${version}/`

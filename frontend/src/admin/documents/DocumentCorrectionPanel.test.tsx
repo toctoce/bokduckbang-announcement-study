@@ -1,0 +1,93 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
+import { DocumentCorrectionPanel } from './DocumentCorrectionPanel'
+import { ManagementError } from '../management/api'
+import type { ManagementDetailData } from '../management/managementContract'
+const mocks = vi.hoisted(() => ({ openPdf: vi.fn(), requestManagementApi: vi.fn(), destroy: vi.fn(), extract: vi.fn() }))
+vi.mock('./pdfExtraction', async original => ({ ...await original<typeof import('./pdfExtraction')>(), openPdf: mocks.openPdf }))
+vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.requestManagementApi }))
+const detail: ManagementDetailData = {
+  summary: { id: 7, name: '두꺼비', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
+  sourceIdentifier: 'TEST-7', data: { version: 2, name: '두꺼비', totalHouseholdCount: 10, totalParkingCount: 0 },
+  housingTypes: [], announcements: [], supplyRows: [], schedules: [], scheduleReviewed: false,
+}
+const document = { fileName: '공고.pdf', sha256: 'a'.repeat(64), totalPages: 3,
+  pages: [{ page: 2, text: '전체 120세대 주차대수 5대', items: [], requiresOcr: false }] }
+const proposals = [
+  { field: 'totalHouseholdCount', value: 120, page: 2, quote: '전체 120세대', unit: '세대', scope: '단지 전체', reason: '전체 세대수 보완' },
+  { field: 'totalParkingCount', value: 5, page: 2, quote: '주차대수 5대', unit: '대', scope: '단지 전체', reason: '주차대수 보완' },
+]
+const json = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: 'complexes:7:basic', version: 2, sha256: document.sha256, proposals, unresolved: [] })
+beforeEach(() => {
+  vi.clearAllMocks()
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:test') })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+  mocks.extract.mockResolvedValue(document); mocks.destroy.mockResolvedValue(undefined)
+  mocks.openPdf.mockResolvedValue({ fileName: '공고.pdf', sha256: document.sha256, totalPages: 3, extract: mocks.extract, destroy: mocks.destroy })
+  mocks.requestManagementApi.mockResolvedValue(detail)
+})
+async function setup() {
+  const onSaved = vi.fn(); const onReload = vi.fn()
+  const view = render(<MemoryRouter><DocumentCorrectionPanel resource="complexes" detail={detail} onSaved={onSaved} onReload={onReload} onBusyChange={vi.fn()} /></MemoryRouter>)
+  fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://example.com/notice.pdf' } })
+  fireEvent.change(screen.getByLabelText('공식 PDF 파일'), { target: { files: [new File(['%PDF-'], '공고.pdf')] } })
+  fireEvent.click(await screen.findByRole('button', { name: '선택 페이지 추출' }))
+  await screen.findByRole('heading', { name: '2. 추출 근거 확인' })
+  return { ...view, onSaved, onReload }
+}
+async function imported() {
+  const context = await setup()
+  fireEvent.change(screen.getByLabelText('에이전트 결과 JSON'), { target: { value: json } })
+  fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
+  return context
+}
+it('원문 확인과 메모가 있어야 선택한 값만 저장한다', async () => {
+  const { onSaved } = await imported()
+  expect(screen.getByRole('button', { name: '확인한 0개 항목 반영' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' }))
+  expect(screen.getByRole('button', { name: '확인한 1개 항목 반영' })).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('확인 메모'), { target: { value: '원문과 전체 세대수 확인' } })
+  fireEvent.click(screen.getByRole('button', { name: '확인한 1개 항목 반영' }))
+  await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+  expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/housing-complexes/7', 'PUT', expect.objectContaining({
+    version: 2, totalHouseholdCount: 120, totalParkingCount: 0,
+    documentEvidence: expect.objectContaining({ citations: [{ field: 'totalHouseholdCount', page: 2, quote: '전체 120세대' }] }),
+  }))
+})
+it('충돌이면 입력을 보존하고 새로 조회하기 전에는 재반영하지 않는다', async () => {
+  mocks.requestManagementApi.mockRejectedValue(new ManagementError('다른 작업에서 변경했습니다.', 409))
+  const { onReload } = await imported()
+  fireEvent.click(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' }))
+  fireEvent.change(screen.getByLabelText('확인 메모'), { target: { value: '원문 확인' } })
+  fireEvent.click(screen.getByRole('button', { name: '확인한 1개 항목 반영' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('다른 작업에서 변경했습니다.')
+  expect(screen.getByLabelText('에이전트 결과 JSON')).toHaveValue(json)
+  expect(screen.getByRole('button', { name: '확인한 1개 항목 반영' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '현재 데이터 다시 조회' }))
+  expect(onReload).toHaveBeenCalledOnce()
+})
+it('수기 입력도 원문 인용을 확인하며 수정안을 만들 수 있다', async () => {
+  await setup()
+  fireEvent.click(screen.getByText('원문을 확인하며 수기 수정안 추가'))
+  fireEvent.change(screen.getByLabelText('수정 항목'), { target: { value: 'totalHouseholdCount' } })
+  fireEvent.change(screen.getByLabelText('수정할 값'), { target: { value: '120' } })
+  fireEvent.change(screen.getByLabelText('근거 쪽수'), { target: { value: '2' } })
+  fireEvent.change(screen.getByLabelText('원문 인용'), { target: { value: '전체 120세대' } })
+  fireEvent.change(screen.getByLabelText('변경 이유'), { target: { value: '전체 세대수 확인' } })
+  fireEvent.submit(screen.getByRole('button', { name: '수기 수정안 추가' }).closest('form')!)
+  expect(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' })).not.toBeChecked()
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
+})
+it('잘못된 근거 결과는 검토 항목을 만들지 않는다', async () => {
+  await setup()
+  fireEvent.change(screen.getByLabelText('에이전트 결과 JSON'), { target: { value: json.replace('전체 120세대', '없는 문장') } })
+  fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('원문 인용')
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+})
+it('화면을 닫으면 PDF와 미리보기 URL을 해제한다', async () => {
+  const { unmount } = await setup(); unmount()
+  expect(mocks.destroy).toHaveBeenCalledOnce()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test')
+})
