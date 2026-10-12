@@ -448,6 +448,52 @@ class AdminManagementIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void PDF_근거와_변경값을_같은_수정이력에_보존한다() throws Exception {
+        for (String path : java.util.List.of("/api/admin/housing-complexes/" + createComplex(),
+                "/api/admin/announcements/" + createAnnouncement(createComplex()))) {
+            var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+            data.put("name", "PDF 확인 이름");
+            data.set("documentEvidence", json.readTree(documentEvidence()));
+            mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                    .andExpect(status().isOk());
+            var history = getData(path + "/changes").get(0);
+            var after = json.readTree(history.get("afterValue").asText());
+            assertThat(after.get("name").asText()).isEqualTo("PDF 확인 이름");
+            assertThat(after.get("documentEvidence").get("citations").get(0).get("page").asInt()).isEqualTo(2);
+            assertThat(after.get("documentEvidence").get("sha256").asText()).isEqualTo("a".repeat(64));
+            assertThat(history.get("actor").asText()).isEqualTo("admin");
+        }
+    }
+
+    @Test
+    void 잘못된_PDF_근거는_값과_이력을_변경하지_않는다() throws Exception {
+        String path = "/api/admin/housing-complexes/" + createComplex();
+        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        String before = data.toString();
+        data.put("name", "잘못된 수정");
+        for (String invalid : java.util.List.of(documentEvidence().replace("https://example.com/notice.pdf", "file:///tmp/a"),
+                documentEvidence().replace("a".repeat(64), "bad-hash"),
+                documentEvidence().replace("\"page\":2", "\"page\":0"),
+                documentEvidence().replace("공고문에서 확인", " "),
+                documentEvidence().replace("PDF 확인 이름", " "))) {
+            data.set("documentEvidence", json.readTree(invalid));
+            mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(getData(path).get("data").toString()).isEqualTo(before);
+        assertThat(getData(path + "/changes").size()).isZero();
+    }
+
+    private String documentEvidence() {
+        return """
+                {"sourceUrl":"https://example.com/notice.pdf","fileName":"공고.pdf","sha256":"%s",
+                 "note":"공고문에서 확인","citations":[{"field":"name","page":2,"quote":"PDF 확인 이름"}]}
+                """.formatted("a".repeat(64));
+    }
+
     private JsonNode getData(String path) throws Exception {
         var result = mvc.perform(get(path).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn();

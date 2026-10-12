@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
@@ -93,7 +94,7 @@ public class AdminAnnouncementManagementService {
         announcement.reviseByAdmin(incoming);
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE", actor, before,
-                json.writeValueAsString(data(announcement))));
+                auditedData(data(announcement), request.documentEvidence())));
         return detail(id);
     }
 
@@ -131,7 +132,7 @@ public class AdminAnnouncementManagementService {
         announcement.recordAdminSupplyChange();
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY", actor, before,
-                json.writeValueAsString(rowData(row))));
+                auditedData(rowData(row), request.documentEvidence())));
         return detail(id);
     }
 
@@ -168,6 +169,14 @@ public class AdminAnnouncementManagementService {
     private Long scheduleComplexId(AnnouncementApplicationSchedule schedule) {
         if (schedule.getHousingComplex() == null) { return null; }
         return schedule.getHousingComplex().getId();
+    }
+
+    private String auditedData(Object data, AdminDocumentEvidence evidence) {
+        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        if (evidence != null) {
+            result.set("documentEvidence", json.valueToTree(evidence));
+        }
+        return json.writeValueAsString(result);
     }
 
     private Announcement find(long id) {
