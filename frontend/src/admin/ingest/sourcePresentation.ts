@@ -63,11 +63,25 @@ const fieldLabels: Record<SourceCategory, Record<string, string>> = {
     attachment_complex_name: '첨부 대상 단지명', correction_reason: '정정 사유', etc_contents: '기타 내용',
   },
   LH_ANNOUNCEMENT_SUPPLY: {},
+  SH_ANNOUNCEMENT: {
+    seq: '게시글 식별자', title: '게시글 제목', department: '담당부서', registered_date: '등록일',
+    original_url: '게시글 원문 URL', list_url: '수집 목록 URL',
+    body_text: '본문 텍스트',
+    attachments: '첨부파일 메타데이터',
+    brdId: '첨부 게시판 코드', fileSeq: '첨부파일 식별자', fileSize: '파일 크기(바이트)',
+    fileTp: '첨부 유형 코드', oriFileNm: '첨부파일명', previewUrl: '첨부 미리보기 URL',
+  },
 }
 
 export const sourcePresentation: Record<SourceCategory, {
   provider: string; documentationUrl: string; firstFields: string[]
 }> = {
+  SH_ANNOUNCEMENT: {
+    provider: '서울주택도시개발공사 · SH 게시판',
+    documentationUrl: 'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024',
+    firstFields: ['title', 'registered_date', 'department', 'attachments',
+      'body_text', 'seq', 'original_url'],
+  },
   MYHOME_COMPLEX: {
     provider: '국토교통부 · 마이홈', documentationUrl: 'https://www.data.go.kr/data/15110581/openapi.do',
     firstFields: ['hsmp_nm', 'suply_ty_nm', 'style_nm', 'suply_prvuse_ar', 'bass_rent_gtn',

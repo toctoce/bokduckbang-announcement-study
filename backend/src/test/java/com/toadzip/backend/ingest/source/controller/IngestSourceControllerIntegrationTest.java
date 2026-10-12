@@ -51,6 +51,7 @@ class IngestSourceControllerIntegrationTest {
 
     @BeforeEach
     void storeSources() {
+        storeShSource();
         for (String category : java.util.List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
                 "LH_ANNOUNCEMENT_CATALOG", "LH_ANNOUNCEMENT_DETAIL", "LH_ANNOUNCEMENT_SUPPLY")) {
             storeCurrentSource(category);
@@ -155,6 +156,17 @@ class IngestSourceControllerIntegrationTest {
                 .param("name", name).update();
     }
 
+    private void storeShSource() {
+        jdbc.sql("""
+                INSERT INTO sh_announcement_source (source_key,seq,title,department,registered_date,
+                original_url,list_url,collected_at)
+                VALUES ('SH:100','100','두꺼비 SH 공고','공급부','2026-10-02',
+                'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/view.do?seq=100&multi_itm_seq=2',
+                'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2',
+                :collectedAt)
+                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
+    }
+
     private void storeCurrentSource(String category) {
         UUID record = UUID.randomUUID();
         jdbc.sql("""
@@ -242,9 +254,11 @@ class IngestSourceControllerIntegrationTest {
             "LH_ANNOUNCEMENT_DETAIL, 두꺼비 상세, complex_name, "
                     + "https://example.test/lh/lhLeaseNoticeDtlInfo1/getLeaseNoticeDtlInfo1",
             "LH_ANNOUNCEMENT_SUPPLY, 두꺼비 공급, complex_label, "
-                    + "https://example.test/lh/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1"
+                    + "https://example.test/lh/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1",
+            "SH_ANNOUNCEMENT, 두꺼비 SH 공고, title, "
+                    + "'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024'"
     })
-    void 관리자는_여섯_종류의_저장된_원천을_출처_URL과_함께_조회한다(
+    void 관리자는_저장된_원천을_출처_URL과_함께_조회한다(
             String category, String name, String rawField, String sourceUrl
     ) throws Exception {
         MvcResult result = mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
@@ -262,6 +276,34 @@ class IngestSourceControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.hasNext").value(false))
                 .andReturn();
         assertThat(result.getResponse().getContentAsString()).doesNotContain("serviceKey", "secret", "password");
+    }
+
+    @Test
+    void 기존_SH_원천은_HTML_없이_재수집_전_내용이_비어있다() throws Exception {
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "SH_ANNOUNCEMENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("SH:100"))
+                .andExpect(jsonPath("$.data.items[0].sourceUpdatedAt").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.raw_list_html").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.detail_fragment_html").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.body_text").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.attachments").doesNotExist());
+    }
+
+    @Test
+    void SH_원천은_HTML_없이_본문과_첨부_배열을_반환한다() throws Exception {
+        jdbc.sql("""
+                UPDATE sh_announcement_source SET body_text = '본문',
+                attachments = '[{"oriFileNm":"공고문.pdf","fileSeq":"7"}]'
+                WHERE source_key = 'SH:100'
+                """).update();
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "SH_ANNOUNCEMENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].raw.body_text").value("본문"))
+                .andExpect(jsonPath("$.data.items[0].raw.attachments[0].oriFileNm").value("공고문.pdf"))
+                .andExpect(jsonPath("$.data.items[0].raw.attachments[0].fileSeq").value("7"))
+                .andExpect(jsonPath("$.data.items[0].raw.detail_fragment_html").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.raw_detail_html").doesNotExist());
     }
 
     @Test
