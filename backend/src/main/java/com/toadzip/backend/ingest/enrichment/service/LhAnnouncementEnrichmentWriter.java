@@ -387,6 +387,13 @@ public class LhAnnouncementEnrichmentWriter {
             String previousSourceIdentifier,
             List<SupplyTarget> storedTargets
     ) {
+        var reviewed = storedTargets.stream()
+                .filter(SupplyTarget::isAdminModified)
+                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .findFirst();
+        if (reviewed.isPresent()) {
+            return new SupplyTargetWriteResult(reviewed.get().getSourceSupplyTargetIdentifier(), 0, 0);
+        }
         String identifier = source.sourceIdentifier() + ":TARGET";
         if (!hasCompleteAmount(source)) {
             String retainedIdentifier = existingAmountTargetIdentifier(

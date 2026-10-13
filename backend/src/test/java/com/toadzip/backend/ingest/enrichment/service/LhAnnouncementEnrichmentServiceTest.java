@@ -1558,6 +1558,44 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(linkRepository.count()).isEqualTo(2);
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 관리자_수정_LH_금액은_공급_식별자가_바뀌어도_중복_생성하지_않는다(boolean changedIdentifier) {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        SupplyRow row = supplyRowRepository.findAll().getFirst();
+        SupplyTarget reviewed = supplyTargetRepository.findAll().getFirst();
+        Long reviewedId = reviewed.getId();
+        reviewed.reviseByAdmin("청년", "1순위", 7, 0,
+                new BigDecimal("7000000"), BigDecimal.ZERO, null, "원문 확인");
+        row.protectConditionsByAdmin();
+        supplyRowRepository.save(row);
+        supplyTargetRepository.save(reviewed);
+        if (changedIdentifier) {
+            sourceStore.replaceSupplies(PAN_ID, requestDescriptionFor(PAN_ID), List.of(
+                    new LhAnnouncementSupplySource(1, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
+                            "동삼2", "46A", "46.8", "67.0", "100", "20", "12000000", "250000"))));
+        }
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getId()).isEqualTo(reviewedId);
+            assertThat(target.getTarget()).isEqualTo("청년");
+            assertThat(target.getSupplyHouseholdCount()).isEqualTo(7);
+            assertThat(target.getReserveCount()).isZero();
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("7000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(target.getLhAmountPreservedReason()).isNull();
+            assertThat(target.isAdminModified()).isTrue();
+        });
+    }
+
     @Test
     void 연결이_없으면_체크포인트와_URL의_원천으로_우회하지_않고_두_단계가_누락을_기록한다() {
         saveComplex();
