@@ -10,8 +10,28 @@ scrape_configs:
         labels:
           environment: dev
           application: toadzip-backend
+
       - targets:
           - 10.0.0.236:8081
         labels:
           environment: prod
           application: toadzip-backend
+
+  - job_name: db-host
+    static_configs:
+      - targets: []
+        labels:
+          role: database
+
+  - job_name: postgres
+    scrape_timeout: 10s
+    static_configs:
+      - targets: []
+        labels:
+          db_role: dev
+      - targets: []
+        labels:
+          db_role: prod
+      - targets: []
+        labels:
+          db_role: shared
