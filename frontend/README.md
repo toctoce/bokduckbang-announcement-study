@@ -445,6 +445,7 @@ HTTPS용 Compose 설정을 선택한 서버에서는 해당 도메인의 HTTPS �
 `.env.example`의 공개 Firebase 설정과 `VITE_NOTIFICATION_PUSH_ENABLED`를 사용한다. 기본 false이며 미설정 시 권한 팝업을 띄우지 않는다.
 비공개 Firebase 키는 브라우저에 넣지 않는다. 권한은 설정의 명시적 버튼에서만 요청한다.
 끄기·로그아웃은 서버 기기 바인딩을 해제합니다. 탭·계정이 공유하는 Firebase 설치는 삭제하지 않으며, 서버 로그아웃 성공 즉시 화면 상태를 비웁니다.
+로컬 Vite는 `frontend/.env`, Docker 빌드는 루트 `.env`의 웹 푸시 공개 설정을 사용합니다. Docker 설정 변경 후에는 frontend 이미지를 다시 빌드합니다.
 SDK는 13.0.0의 register/onRegistered(FID)를 사용하며 기존 registration token API를 사용하지 않는다.
 
 `npm run dev`는 worker를 `.worker-dev/`에 먼저 빌드하고 개발 서버에서 같은 origin의 `/firebase-messaging-sw.js`로 제공한다.

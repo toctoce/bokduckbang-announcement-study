@@ -80,6 +80,17 @@ readThrough는 목록과 같은 DB snapshot의 본인 최대 ID다. 사용자별
 4. 전경/배경/페이지 종료, 클릭 복귀, 권한 거부, 기기 2대, A 로그아웃→B 로그인, worker 갱신과 iPhone 홈 화면 설치를 확인한다.
 5. 검증 완료 후 `VITE_NOTIFICATION_PUSH_ENABLED=true`로 빌드해 푸시 설정을 공개한다.
 
+Docker 배포는 루트 `.env`의 `NOTIFICATION_*`를 backend 런타임에, `VITE_NOTIFICATION_*`·`VITE_FIREBASE_*`를
+frontend 빌드 인자로 전달한다. 공개 웹 설정을 바꾸면 frontend 이미지를 다시 빌드해야 한다.
+로컬 Vite 실행에서는 `frontend/.env`에 웹 설정을 넣는다. 서버와 웹 설정은 같은 Firebase 프로젝트를 사용한다.
+
+워크로드 ID를 사용하면 기본 Compose만 사용한다. 관리되는 ADC 파일을 사용할 경우 저장소 밖의 절대 경로를
+`NOTIFICATION_FIREBASE_CREDENTIALS_FILE`로 지정하고 기존 Compose 명령에
+`-f compose.notification-credentials.yaml`을 추가한다. 예를 들어 `-f compose.yaml -f compose.https.yaml
+-f compose.notification-credentials.yaml` 순서다. 이 overlay는 backend에만 파일을 읽기 전용으로 마운트하며
+컨테이너 경로를 `GOOGLE_APPLICATION_CREDENTIALS`로 지정한다. backend UID 10001의 읽기 권한을 준비해야 한다.
+개인키 내용은 `.env`, 빌드 인자, frontend 이미지에 넣지 않는다.
+
 delivery만 끄면 알림함과 폴링은 유지된다. publisher off 기간은 기본 소급하지 않는다.
 롤백은 작업과 event key를 보존하고 additive schema를 삭제하지 않는 방식으로 한다.
 
