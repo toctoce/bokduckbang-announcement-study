@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { ListPagination } from '../management/ListPagination'
@@ -21,11 +21,15 @@ function targetLink(item: NotificationItem) {
 }
 export function NotificationManagementPage() {
   return <section className={styles.page}><header className={styles.heading}><h1>알림 신청 관리</h1>
-    <p>회원이 신청한 지역·단지·공고를 확인합니다. 신청 설정이며 알림 발송 결과는 아닙니다.</p></header>
+    <p>누가 어떤 지역·단지·공고의 알림을 신청했는지 확인합니다.</p>
+    <p className={styles.guide}>신청자 검색 → 대상·상태 확인 → 회원 상세에서 전체 신청 확인</p></header>
     <NotificationSubscriptions /></section>
 }
 export function NotificationSubscriptions({ userId }: { userId?: string }) {
+  const SectionHeading = userId ? 'h3' : 'h2'
   const [params, setParams] = useSearchParams()
+  const helpId = useId()
+  const form = useRef<HTMLFormElement>(null)
   const pageKey = userId ? 'notificationPage' : 'page', statusKey = userId ? 'notificationStatus' : 'status'
   const status = params.get(statusKey) ?? (userId ? 'ALL' : 'ACTIVE')
   const pageValue = params.get(pageKey) ?? '0', page = Number(pageValue)
@@ -48,6 +52,18 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
     if (value) routeParams.set(name, value)
   }
   const returnTo = `/admin/notification-subscriptions${routeParams.size ? `?${routeParams}` : ''}`
+  const hasFilters = Boolean(keyword || targetType || targetId || status !== (userId ? 'ALL' : 'ACTIVE'))
+
+  function resetFilters() {
+    form.current?.reset()
+    setKeyword('')
+    setParams(current => {
+      const next = userId ? new URLSearchParams(current) : new URLSearchParams()
+      next.delete(pageKey)
+      next.delete(statusKey)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!valid) return
@@ -74,10 +90,15 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
     {userId ? <h2>알림 신청</h2> : null}
     {data ? <><dl className={styles.summary}>
       <div><dt>{userId ? '회원 활성 신청 건수' : '전체 활성 신청 회원'}</dt>
-        <dd>{(userId ? data.summary.activeSubscriptions : data.summary.activeMembers).toLocaleString('ko-KR')}{userId ? '건' : '명'}</dd></div>
-      {!userId ? <div><dt>전체 활성 신청 건수</dt><dd>{data.summary.activeSubscriptions.toLocaleString('ko-KR')}건</dd></div> : null}
+        <dd>{(userId ? data.summary.activeSubscriptions : data.summary.activeMembers).toLocaleString('ko-KR')}{userId ? '건' : '명'}</dd>
+        <dd className={styles.summaryHelp}>{userId ? '이 회원의 현재 유효한 신청' : '유효한 신청이 있는 회원 · 중복 제외'}</dd></div>
+      {!userId ? <div><dt>전체 활성 신청 건수</dt><dd>{data.summary.activeSubscriptions.toLocaleString('ko-KR')}건</dd>
+        <dd className={styles.summaryHelp}>한 회원이 여러 대상을 신청하면 각각 1건</dd></div> : null}
     </dl><p className={styles.meta}>마지막 조회 기준 · {date(data.summary.asOf)} (한국 시간)</p></> : null}
-    <form key={`${filters}#${pageValue}`} className={styles.filters} aria-label="알림 신청 검색" onSubmit={event => {
+    <div className={styles.filterPanel}>
+    <div className={styles.filterHeading}><SectionHeading>{userId ? '신청 상태 조회' : '신청자 찾기'}</SectionHeading>
+      <span>{userId ? '전체 상태로 시작합니다.' : '처음에는 활성 신청만 표시합니다.'}</span></div>
+    <form ref={form} key={`${filters}#${pageValue}`} className={styles.filters} aria-label="알림 신청 검색" onSubmit={event => {
       event.preventDefault()
       const values = new FormData(event.currentTarget)
       setKeyword(String(values.get('keyword') ?? '').trim())
@@ -93,40 +114,62 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       })
     }}>
       {!userId ? <><label className={styles.search}>로그인 이메일·회원 ID<input name="keyword" maxLength={200}
-        defaultValue={keyword} placeholder="이메일 또는 회원 ID" /></label>
+        defaultValue={keyword} placeholder="예: member@example.com 또는 7" /></label>
       <label>대상 종류<select name="targetType" defaultValue={targetType}><option value="">전체 대상</option>
         {Object.entries(targetLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19} /></label></> : null}
+      </> : null}
       <label>신청 상태<select name="status" defaultValue={status}>{Object.entries(statusLabels).map(([value, label]) =>
         <option key={value} value={value}>{label}</option>)}</select></label>
-      <div className={styles.actions}><Button type="submit">검색</Button><button type="button" onClick={event => {
-        event.currentTarget.form?.reset()
-        setKeyword('')
-        setParams(current => { const next = userId ? new URLSearchParams(current) : new URLSearchParams()
-          next.delete(pageKey); next.delete(statusKey); return next })
-      }}>초기화</button></div>
+      <div className={styles.actions}><Button data-design-system type="submit">검색</Button><button type="button" onClick={resetFilters}>초기화</button></div>
+      {!userId ? <details className={styles.advanced} open={Boolean(targetId) || undefined}>
+        <summary>대상 ID로 정확히 찾기</summary>
+        <div><label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19}
+          pattern="[0-9]{1,19}" aria-describedby={`${helpId}-target`} placeholder="예: 11" /></label>
+          <p id={`${helpId}-target`}>지역 코드나 단지·공고 ID를 알고 있을 때 입력하세요. 대상 종류도 함께 선택하면 더 정확합니다.</p></div>
+      </details> : null}
     </form>
+    <details className={styles.help}><summary>상태와 집계는 어떻게 읽나요?</summary>
+      <ul><li><strong>활성</strong> · 현재 유효한 신청</li><li><strong>취소</strong> · 회원이 해제한 신청</li>
+        <li><strong>만료</strong> · 유효기간이 지난 신청</li></ul>
+      <p>{userId ? '상단 집계는 이 회원의 활성 신청을 셉니다.' : '상단 집계는 검색 조건과 관계없이 전체 활성 신청을 셉니다.'}
+        {' '}목록 한 줄은 한 대상의 신청입니다. 알림 발송 결과는 포함하지 않습니다.</p>
+    </details>
+    </div>
     {error ? <div className={styles.error} role="alert"><p>{error}</p>{valid ? <button type="button"
       onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button> : null}</div> : null}
     <div aria-busy={pending}><div className={styles.resultHeading}>
-      <p className={styles.meta}>{data ? `검색 결과 ${data.totalElements.toLocaleString('ko-KR')}건 · 신청일 최신순` : '\u00a0'}</p>
+      <div><SectionHeading aria-live="polite">{data ? `검색 결과 ${data.totalElements.toLocaleString('ko-KR')}건` : '신청 목록'}</SectionHeading>
+        <p className={styles.meta}>신청일 최신순 · 모든 날짜는 한국 시간</p></div>
       <button type="button" disabled={pending || !valid} onClick={() => setAttempt(value => value + 1)}>새로고침</button></div>
+      {valid ? <ul className={styles.applied} aria-label="적용된 검색 조건">
+        <li>상태: {statusLabels[status]}</li>
+        {!userId ? <li>대상: {isTarget(targetType) ? targetLabels[targetType] : '전체'}</li> : null}
+        {keyword ? <li>신청자: {keyword}</li> : null}
+        {targetId ? <li>대상 ID: {targetId}</li> : null}
+      </ul> : null}
       {pending ? <p role="status">알림 신청 목록을 불러오는 중…</p> : null}
       {data?.items.length ? <div className={styles.scroll} role="region" tabIndex={0} aria-label="알림 신청 목록 스크롤">
         <table className={styles.table} aria-label={userId ? '회원 알림 신청 목록' : '알림 신청 목록'}>
-          <thead><tr>{!userId ? <><th scope="col">회원</th><th scope="col">로그인 이메일</th><th scope="col">로그인 방식</th></> : null}
+          <thead><tr>{!userId ? <th scope="col">신청자</th> : null}
             <th scope="col">대상</th><th scope="col">상태</th><th scope="col">신청일</th><th scope="col">만료일</th></tr></thead>
           <tbody>{data.items.map(item => <tr key={item.id}>
-            {!userId ? <><td><Link aria-label={`회원 ${item.userId} 상세 보기`}
-              to={`/admin/users/${item.userId}?returnTo=${encodeURIComponent(returnTo)}`}>{item.userId}</Link></td>
-              <td>{item.email || '미제공'}</td><td>{providerLabels[item.provider]}</td></> : null}
-            <td><span className={styles.kind}>{targetLabels[item.targetType]} · {item.targetId}</span>
-              {targetLink(item) ? <Link to={targetLink(item) ?? ''}>{item.targetName}</Link> : <span>{item.targetName ?? '대상 확인 불가'}</span>}</td>
-            <td><span className={styles.badge} data-status={item.status}>{statusLabels[item.status]}</span></td>
-            <td>{item.requestedAt ? <time dateTime={item.requestedAt}>{date(item.requestedAt)}</time> : '미확인'}</td>
-            <td><time dateTime={item.expiresAt}>{date(item.expiresAt)}</time></td>
+            {!userId ? <td data-label="신청자"><Link className={styles.primary}
+              aria-label={`회원 ${item.userId} 상세 보기${item.email ? ` · ${item.email}` : ''}`}
+              to={`/admin/users/${item.userId}?returnTo=${encodeURIComponent(returnTo)}`}>{item.email || `회원 ${item.userId}`}</Link>
+              <span className={styles.kind}>회원 ID {item.userId} · {providerLabels[item.provider]}</span>
+              {!item.email ? <span className={styles.kind}>로그인 이메일 미제공</span> : null}</td> : null}
+            <td data-label="대상"><span className={styles.kind}>{targetLabels[item.targetType]} · {item.targetId}</span>
+              {targetLink(item) ? <Link className={styles.primary} to={targetLink(item) ?? ''}>{item.targetName}</Link>
+                : <span className={styles.primary}>{item.targetName ?? '대상 확인 불가'}</span>}</td>
+            <td data-label="상태"><span className={styles.badge} data-status={item.status}>{statusLabels[item.status]}</span></td>
+            <td data-label="신청일">{item.requestedAt ? <time dateTime={item.requestedAt}>{date(item.requestedAt)}</time>
+              : <><span>미확인</span><span className={styles.kind}>신청 시각 기록 없음</span></>}</td>
+            <td data-label="만료일"><time dateTime={item.expiresAt}>{date(item.expiresAt)}</time></td>
           </tr>)}</tbody>
-        </table></div> : data ? <p className={styles.empty}>표시할 알림 신청이 없습니다.</p> : null}
+        </table></div> : data ? <div className={styles.empty}><h3>표시할 알림 신청이 없습니다.</h3>
+          <p>{hasFilters ? '검색어 또는 대상·상태 조건을 바꾸어 다시 찾아보세요.'
+            : userId ? '이 회원이 신청한 알림이 없습니다.' : '현재 활성 신청이 없습니다. 전체 상태를 선택하면 취소·만료된 신청도 확인할 수 있습니다.'}</p>
+          {hasFilters ? <button type="button" onClick={resetFilters}>검색 조건 초기화</button> : null}</div> : null}
       {data ? <ListPagination page={data.page} totalPages={data.totalPages} disabled={pending} label="알림 신청 목록 페이지"
         onMove={next => setParams(current => { current.set(pageKey, String(next)); return current })} /> : null}
     </div>

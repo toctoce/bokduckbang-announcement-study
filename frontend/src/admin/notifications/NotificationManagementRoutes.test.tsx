@@ -31,7 +31,7 @@ it('관리자 메뉴에서 회원 신청을 보고 회원 상세의 신청까지
   expect(table).toHaveTextContent('미확인')
   expect(screen.getByText('전체 활성 신청 회원')).toBeVisible()
   expect(screen.getByText('전체 활성 신청 건수')).toBeVisible()
-  fireEvent.click(screen.getByRole('link', { name: '회원 7 상세 보기' }))
+  fireEvent.click(screen.getByRole('link', { name: '회원 7 상세 보기 · member@example.test' }))
   expect(await screen.findByRole('heading', { name: '회원 7', level: 1 })).toBeVisible()
   expect(await screen.findByRole('table', { name: '회원 알림 신청 목록' })).toHaveTextContent(item.targetName)
   expect(screen.getByRole('link', { name: '목록으로' })).toHaveAttribute('href', '/admin/notification-subscriptions')
@@ -48,7 +48,7 @@ it('회원 검색어를 주소에 넣지 않고 상태·대상으로 검색한�
   await waitFor(() => expect(fetcher.mock.calls.some(([url]) =>
     String(url).includes('keyword=member%40') && String(url).includes('status=CANCELLED')
       && String(url).includes('targetType=REGION'))).toBe(true))
-  expect(screen.getByRole('link', { name: '회원 7 상세 보기' }).getAttribute('href')).not.toContain('member')
+  expect(screen.getByRole('link', { name: '회원 7 상세 보기 · member@example.test' }).getAttribute('href')).not.toContain('member')
 })
 
 it('미인증 사용자는 신청 API를 호출하지 않고 관리자 로그인으로 이동한다', async () => {

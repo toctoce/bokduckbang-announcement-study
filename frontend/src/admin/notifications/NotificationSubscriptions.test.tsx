@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { NotificationManagementPage } from './NotificationSubscriptions'
@@ -80,4 +80,45 @@ it('조건 변경은 이전 요청을 취소하고 늦은 결과가 최신 목�
   await screen.findByText('표시할 알림 신청이 없습니다.')
   await act(() => resolve({ ...page, summary: { ...page.summary, activeMembers: 99 } }))
   expect(screen.queryByText('99명')).not.toBeInTheDocument()
+})
+
+it('신청자 정보를 한 칸으로 묶고 이메일이 없어도 회원 상세를 연다', async () => {
+  vi.mocked(loadNotificationSubscriptions).mockResolvedValue({ ...page, totalElements: 1, totalPages: 1,
+    items: [{ id: '1', userId: '7', email: null, provider: 'GOOGLE', targetType: 'REGION', targetId: '11',
+      targetName: '서울특별시 전체', status: 'ACTIVE', requestedAt: null, expiresAt: '2027-10-13T00:00:00Z' }],
+  })
+  mount()
+  const table = await screen.findByRole('table', { name: '알림 신청 목록' })
+  const applicant = within(table).getByRole('cell', { name: /회원 7 상세 보기.*회원 ID 7/ })
+  expect(applicant).toHaveTextContent('Google')
+  expect(applicant).toHaveTextContent('로그인 이메일 미제공')
+  expect(within(applicant).getByRole('link', { name: '회원 7 상세 보기' })).toHaveAttribute('href',
+    '/admin/users/7?returnTo=%2Fadmin%2Fnotification-subscriptions')
+  expect(table).toHaveTextContent('신청 시각 기록 없음')
+})
+
+it('입력 중인 조건과 실제 적용된 조건을 구분하고 빈 결과에서 초기화한다', async () => {
+  mount()
+  await screen.findByText('표시할 알림 신청이 없습니다.')
+  const applied = screen.getByRole('list', { name: '적용된 검색 조건' })
+  expect(applied).toHaveTextContent('상태: 활성')
+  fireEvent.change(screen.getByLabelText('신청 상태'), { target: { value: 'CANCELLED' } })
+  expect(applied).toHaveTextContent('상태: 활성')
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await waitFor(() => expect(screen.getByRole('list', { name: '적용된 검색 조건' })).toHaveTextContent('상태: 취소'))
+  expect(await screen.findByRole('button', { name: '검색 조건 초기화' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '검색 조건 초기화' }))
+  await waitFor(() => expect(vi.mocked(loadNotificationSubscriptions).mock.lastCall?.[0].get('status')).toBe('ACTIVE'))
+  expect(screen.getByLabelText('신청 상태')).toHaveValue('ACTIVE')
+})
+
+it('대상 ID 필터가 있는 주소는 상세 검색을 펼쳐 숨겨진 조건을 보여 준다', async () => {
+  mount('/admin/notification-subscriptions?targetType=REGION&targetId=11')
+  await screen.findByText('표시할 알림 신청이 없습니다.')
+  const input = screen.getByLabelText('대상 ID')
+  expect(input.closest('details')).toHaveAttribute('open')
+  expect(input).toHaveAccessibleDescription(/지역 코드나 단지·공고 ID/)
+  expect(screen.getByRole('list', { name: '적용된 검색 조건' })).toHaveTextContent('대상 ID: 11')
+  fireEvent.click(screen.getByRole('button', { name: '검색 조건 초기화' }))
+  await waitFor(() => expect(screen.getByLabelText('대상 ID').closest('details')).not.toHaveAttribute('open'))
 })
