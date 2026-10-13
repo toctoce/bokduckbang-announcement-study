@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Button } from '../../design-system/components/Button'
-import { display, valueAt } from '../management/fields'
+import { display, labels, valueAt } from '../management/fields'
 import { ManagementError, requestManagementApi } from '../management/api'
 import { parseManagementDetail, type ManagementDetailData, type ManagementResource } from '../management/managementContract'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
@@ -216,11 +216,12 @@ function ManualProposal({ target, document, disabled, onAdded, onDirtyChange }: 
         onAdded(parsed.proposals[0]); setError(''); setValue(''); setQuote(''); setReason('')
       } catch (cause) { setError(cause instanceof Error ? cause.message : '수기 입력을 확인해 주세요.') }
     }}><fieldset disabled={disabled}><legend>수기 수정안</legend>
-      <label>수정 항목<select value={fieldName} onChange={event => setFieldName(event.target.value)}>
+      <label>수정 항목<select value={fieldName} onChange={event => { setFieldName(event.target.value); setValue(''); setError('') }}>
         {target.fields.map(item => <option key={item.name} value={item.name}>{item.label}</option>)}
       </select></label>
-      <label>수정할 값<input required value={value} maxLength={255} onChange={event => setValue(event.target.value)} /></label>
-      <p className={styles.hint}>단위: {field?.unit} · 범위: {field?.scope}{field?.boolean ? ' · true 또는 false' : ''}{field?.options && !field.boolean ? ` · ${field.options.join(', ')}` : ''}</p>
+      <label>수정할 값{field?.boolean || field?.options ? <select required value={value} onChange={event => setValue(event.target.value)}><option value="">선택해 주세요</option>{(field.boolean ? ['true', 'false'] : field.options ?? []).map(option => <option key={option} value={option}>{labels[option] ?? option}</option>)}</select>
+        : <input required type={field?.type === 'number' ? 'number' : field?.type === 'date' ? 'date' : 'text'} inputMode={field?.money ? 'numeric' : undefined} min={field?.min} max={field?.max} step={field?.step ?? '1'} value={value} maxLength={255} onChange={event => setValue(event.target.value)} />}</label>
+      <p className={styles.hint}>단위: {field?.unit} · 범위: {field?.scope}</p>
       <label>근거 쪽수<select required value={page} onChange={event => setPage(event.target.value)}><option value="">선택</option>
         {document.pages.filter(item => !item.requiresOcr).map(item => <option key={item.page} value={item.page}>{item.page}쪽</option>)}</select></label>
       <label>원문 인용<textarea required maxLength={2000} rows={3} value={quote} onChange={event => setQuote(event.target.value)} /></label>
