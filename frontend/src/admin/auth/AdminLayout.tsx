@@ -55,6 +55,9 @@ export function AdminLayout() {
         <div className="admin-nav-group"><span>회원 운영</span>
           <NavLink to="/admin/users">회원 관리</NavLink>
         </div>
+        <div className="admin-nav-group"><span>알림 운영</span>
+          <NavLink to="/admin/notification-subscriptions">알림 신청 관리</NavLink>
+        </div>
         <div className="admin-nav-group"><span>고객 의견</span>
           <NavLink to="/admin/feedback">사용자 의견</NavLink>
         </div>
