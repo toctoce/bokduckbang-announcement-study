@@ -99,7 +99,8 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       <label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19} /></label></> : null}
       <label>신청 상태<select name="status" defaultValue={status}>{Object.entries(statusLabels).map(([value, label]) =>
         <option key={value} value={value}>{label}</option>)}</select></label>
-      <div className={styles.actions}><Button type="submit">검색</Button><button type="button" onClick={() => {
+      <div className={styles.actions}><Button type="submit">검색</Button><button type="button" onClick={event => {
+        event.currentTarget.form?.reset()
         setKeyword('')
         setParams(current => { const next = userId ? new URLSearchParams(current) : new URLSearchParams()
           next.delete(pageKey); next.delete(statusKey); return next })

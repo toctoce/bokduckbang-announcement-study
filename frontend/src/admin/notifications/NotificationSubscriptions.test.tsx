@@ -44,6 +44,20 @@ it('회원 검색어를 URL에 남기지 않고 초기화한다', async () => {
   await waitFor(() => expect(vi.mocked(loadNotificationSubscriptions).mock.lastCall?.[0].get('keyword')).toBeNull())
 })
 
+it('검색하지 않은 입력도 초기화하면 기본 검색 조건으로 돌아간다', async () => {
+  mount()
+  await screen.findByText('표시할 알림 신청이 없습니다.')
+  fireEvent.change(screen.getByLabelText('로그인 이메일·회원 ID'), { target: { value: 'draft@example.test' } })
+  fireEvent.change(screen.getByLabelText('대상 종류'), { target: { value: 'COMPLEX' } })
+  fireEvent.change(screen.getByLabelText('대상 ID'), { target: { value: '22' } })
+  fireEvent.change(screen.getByLabelText('신청 상태'), { target: { value: 'CANCELLED' } })
+  fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+  expect(screen.getByLabelText('로그인 이메일·회원 ID')).toHaveValue('')
+  expect(screen.getByLabelText('대상 종류')).toHaveValue('')
+  expect(screen.getByLabelText('대상 ID')).toHaveValue('')
+  expect(screen.getByLabelText('신청 상태')).toHaveValue('ACTIVE')
+})
+
 it('선행 0 대상 ID를 표시하고 실제 단지 상세 경로로 연결한다', async () => {
   vi.mocked(loadNotificationSubscriptions).mockResolvedValue({ ...page, totalElements: 1, totalPages: 1,
     items: [{ id: '1', userId: '7', email: null, provider: 'GOOGLE', targetType: 'COMPLEX', targetId: '01',
