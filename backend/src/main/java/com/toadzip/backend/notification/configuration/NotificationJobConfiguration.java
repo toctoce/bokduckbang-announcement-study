@@ -10,6 +10,15 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @EnableConfigurationProperties(NotificationProperties.class)
 public class NotificationJobConfiguration {
     @Bean(defaultCandidate = false)
+    @ConditionalOnProperty(name = "app.notification.delivery-enabled", havingValue = "true")
+    public ThreadPoolTaskScheduler notificationDeliveryScheduler() {
+        var scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("notification-delivery-");
+        return scheduler;
+    }
+
+    @Bean(defaultCandidate = false)
     @ConditionalOnProperty(name = "app.notification.materializer-enabled", havingValue = "true")
     public ThreadPoolTaskScheduler notificationMaterializerScheduler() {
         var scheduler = new ThreadPoolTaskScheduler();
