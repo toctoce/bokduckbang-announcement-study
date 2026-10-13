@@ -5,7 +5,7 @@ function setup(permission: NotificationPermission = 'granted') {
   let registered: (fid: string) => void = () => {}
   let message: () => void = () => {}
   const stopRegistered = vi.fn(), stopMessage = vi.fn()
-  const sdk: PushSdk = { permission: () => permission, requestPermission: vi.fn(async () => permission),
+  const sdk: PushSdk & { unregister(): Promise<void> } = { permission: () => permission, requestPermission: vi.fn(async () => permission),
     register: vi.fn(async () => { registered('fid') }), unregister: vi.fn(async () => {}),
     onRegistered: vi.fn(callback => { registered = callback; return stopRegistered }), onMessage: vi.fn(callback => { message = callback; return stopMessage }) }
   let version = 0
@@ -42,17 +42,17 @@ it('반복 FID callback은 갱신된 버전을 사용하고 메시지는 즉시 
   stop(); message(); expect(refresh).toHaveBeenCalledOnce()
   client.dispose()
 })
-it('서버 해제 후 SDK를 해제하고 늦은 callback은 재등록하지 않는다', async () => {
+it('서버 해제 후 공유 설치를 유지하고 늦은 callback은 재등록하지 않는다', async () => {
   const { client, sdk, repository, registered } = setup()
   await client.start(); await client.enable()
   await client.disable(); registered('late-fid')
   await Promise.resolve()
   expect(repository.disable).toHaveBeenCalledWith('1', '1', expect.any(AbortSignal))
-  expect(vi.mocked(repository.disable).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sdk.unregister).mock.invocationCallOrder[0] ?? 0)
+  expect(sdk.unregister).not.toHaveBeenCalled()
   expect(repository.register).toHaveBeenCalledOnce()
   client.dispose()
 })
-it('로그아웃 후 SDK 실패는 재시도 안내로 남기고 서버 해제를 다시 요청하지 않는다', async () => {
+it('로그아웃 후 SDK 요청 없이 즉시 끄고 늦은 callback을 무시한다', async () => {
   const { client, sdk, repository, registered } = setup()
   await client.start(); await client.enable()
   vi.mocked(sdk.unregister).mockRejectedValue(new Error('network'))
@@ -60,7 +60,8 @@ it('로그아웃 후 SDK 실패는 재시도 안내로 남기고 서버 해제�
   registered('late-fid'); await Promise.resolve()
   expect(repository.register).toHaveBeenCalledOnce()
   expect(repository.disable).not.toHaveBeenCalled()
-  expect(client.getSnapshot().message).toContain('다시')
+  expect(client.getSnapshot().status).toBe('off')
+  expect(sdk.unregister).not.toHaveBeenCalled()
   client.dispose()
 })
 it('화면 정리는 SDK 구독만 제거하고 설치 등록은 지우지 않는다', async () => {
@@ -80,6 +81,27 @@ it('등록 진행 중 해제하면 등록 응답의 새 버전을 해제하고 �
   finish({ deviceId: 'device', enabled: true, bindingVersion: '2' })
   await disabling
   expect(repository.disable).toHaveBeenCalledWith('1', '2', expect.any(AbortSignal))
-  expect(sdk.unregister).toHaveBeenCalledOnce()
+  expect(sdk.unregister).not.toHaveBeenCalled()
+  client.dispose()
+})
+
+it.each(['disable', 'afterLogout'] as const)('%s 이후 다른 탭에서 등록한 공유 FID는 유지한다', async operation => {
+  const { client, sdk, repository } = setup()
+  await client.start(); await client.enable()
+  let newerTabCanReceive = false
+  vi.mocked(repository.disable).mockImplementationOnce(async () => { newerTabCanReceive = true })
+  vi.mocked(sdk.unregister).mockImplementationOnce(async () => { newerTabCanReceive = false })
+  if (operation === 'afterLogout') newerTabCanReceive = true // Server logout finished before the other tab enabled push.
+  await client[operation]()
+  expect(newerTabCanReceive).toBe(true)
+  client.dispose()
+})
+it('오래된 바인딩 해제 충돌은 서버의 최신 등록과 SDK를 건드리지 않는다', async () => {
+  const { client, sdk, repository } = setup()
+  await client.start(); await client.enable()
+  vi.mocked(repository.disable).mockRejectedValueOnce(new Error('409'))
+  await client.disable()
+  expect(client.getSnapshot().status).toBe('error')
+  expect(sdk.unregister).not.toHaveBeenCalled()
   client.dispose()
 })

@@ -7,7 +7,7 @@ vi.mock('./firebasePushSdk', () => ({ pushUiEnabled: true }))
 afterEach(() => { localStorage.clear() })
 it('허용 버튼을 눌렀을 때만 권한을 요청하고 거부 안내를 보인다', async () => {
   const request = vi.fn(async () => 'denied' as const)
-  const client = createPushClient('1', { permission: () => 'default', requestPermission: request, register: vi.fn(), unregister: vi.fn(), onMessage: () => () => {}, onRegistered: () => () => {} }, { current: async () => ({ deviceId: null, enabled: false, bindingVersion: null }), register: vi.fn(), disable: vi.fn() })
+  const client = createPushClient('1', { permission: () => 'default', requestPermission: request, register: vi.fn(), onMessage: () => () => {}, onRegistered: () => () => {} }, { current: async () => ({ deviceId: null, enabled: false, bindingVersion: null }), register: vi.fn(), disable: vi.fn() })
   await client.start()
   render(<NotificationPushContext.Provider value={{ client, error: '', retry: vi.fn() }}><NotificationPushControl /></NotificationPushContext.Provider>)
   expect(request).not.toHaveBeenCalled()

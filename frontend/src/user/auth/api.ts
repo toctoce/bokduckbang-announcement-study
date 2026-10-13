@@ -36,7 +36,7 @@ export async function logoutUser(): Promise<void> {
       signal: AbortSignal.timeout(15_000),
     })
     if (!response.ok) throw new Error('로그아웃하지 못했습니다.')
-    await afterNotificationLogout()
+    afterNotificationLogout()
     window.dispatchEvent(new Event('toadzip:session-ended'))
   } finally {
     await consentStore.finishAuthTransition(transition)

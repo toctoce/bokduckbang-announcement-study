@@ -1,5 +1,4 @@
 import type { PushSdk } from './firebasePushClient'
-import { markPushCleanup, pushCleanupPending } from './pushSession'
 export const pushUiEnabled = import.meta.env.VITE_NOTIFICATION_PUSH_ENABLED === 'true'
 export async function preparePushSdk(): Promise<PushSdk> {
   const config = {
@@ -22,13 +21,8 @@ export async function preparePushSdk(): Promise<PushSdk> {
       const serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/', updateViaCache: 'none' })
       await messagingSdk.register(messaging, { vapidKey, serviceWorkerRegistration })
     }),
-    unregister: () => serialize(() => messagingSdk.unregister(messaging)),
     onRegistered: listener => messagingSdk.onRegistered(messaging, listener),
     onMessage: listener => messagingSdk.onMessage(messaging, () => listener()),
-  }
-  if (pushCleanupPending()) {
-    try { await sdk.unregister(); markPushCleanup(false) }
-    catch { throw new Error('브라우저 알림 등록 정리를 다시 시도해 주세요.') }
   }
   return sdk
 }

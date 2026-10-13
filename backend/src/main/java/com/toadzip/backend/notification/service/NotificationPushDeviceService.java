@@ -65,9 +65,21 @@ public class NotificationPushDeviceService {
         if (version == null) {
             throw new InvalidNotificationRequestException();
         }
-        if (installation != null) {
-            repository.disable(userId, installation, version, clock.instant());
+        if (installation == null) {
+            throw new NotificationDeviceConflictException();
         }
+        if (repository.disable(userId, installation, version, clock.instant())) {
+            return;
+        }
+        var current = repository.find(installation);
+        if (current.isPresent()) {
+            var device = current.get();
+            if (device.userId() == userId && !device.enabled()
+                    && (device.bindingVersion() == version || device.bindingVersion() - 1 == version)) {
+                return;
+            }
+        }
+        throw new NotificationDeviceConflictException();
     }
 
     @Transactional

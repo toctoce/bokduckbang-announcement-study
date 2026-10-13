@@ -65,13 +65,26 @@ class NotificationPushDeviceIntegrationTest {
         mvc.perform(delete(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expectedUserId\":\"101\",\"bindingVersion\":\"1\"}"))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("SELECT enabled FROM notification_push_devices", Boolean.class)).isTrue();
         mvc.perform(delete(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expectedUserId\":\"101\",\"bindingVersion\":\"3\"}"))
                 .andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject("SELECT enabled FROM notification_push_devices", Boolean.class)).isFalse();
+    }
+
+    @Test
+    void 같은_해제의_재시도는_멱등이지만_새_등록은_해제하지_않는다() throws Exception {
+        Cookie cookie = register(101, new MockHttpSession(), null, null);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(delete(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"expectedUserId\":\"101\",\"bindingVersion\":\"1\"}"))
+                    .andExpect(status().isNoContent());
+        }
+        assertThat(jdbc.queryForObject("SELECT binding_version FROM notification_push_devices", Long.class))
+                .isEqualTo(2);
     }
 
     @Test

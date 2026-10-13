@@ -1,9 +1,8 @@
-import { markPushCleanup } from './pushSession'
 import type { PushDeviceRepository } from './pushDeviceRepository'
 export interface PushSdk {
   permission(): NotificationPermission
   requestPermission(): Promise<NotificationPermission>
-  register(): Promise<void>; unregister(): Promise<void>
+  register(): Promise<void>
   onRegistered(listener: (fid: string) => void): () => void
   onMessage(listener: () => void): () => void
 }
@@ -40,11 +39,6 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
   })
   const stopMessages = sdk.onMessage(() => { if (active && !disposed) refreshListeners.forEach(listener => listener()) })
   const stop = () => { active = false; generation++; registrationDone?.(false) }
-  async function cleanupSdk() {
-    markPushCleanup(true)
-    try { await sdk.unregister(); markPushCleanup(false); publish({ status: 'off', message: '' }) }
-    catch { publish({ status: 'off', message: '서버 알림은 꺼졌어요. 브라우저 등록 정리는 새로고침 후 다시 시도해 주세요.' }) }
-  }
   return {
     async start() {
       try {
@@ -84,10 +78,11 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
         if (bindingVersion) await repository.disable(userId, bindingVersion, controller.signal)
         // Refresh only after our fenced disable succeeded; never retry a conflict with a newer owner's version.
         if (bindingVersion) bindingVersion = String(BigInt(bindingVersion) + 1n)
-        await cleanupSdk()
+        // The Firebase installation is shared by tabs and accounts. Only the server binding is account-scoped.
+        publish({ status: 'off', message: '' })
       } catch { if (!disposed) publish({ status: 'error', message: '알림을 끄지 못했어요. 새로고침 후 다시 확인해 주세요.' }) }
     },
-    async afterLogout() { stop(); await writes; await cleanupSdk() },
+    async afterLogout() { stop(); publish({ status: 'off', message: '' }) },
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener) } },
     getSnapshot() { return state },
     subscribeRefresh(listener) { refreshListeners.add(listener); return () => { refreshListeners.delete(listener) } },

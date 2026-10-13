@@ -52,9 +52,12 @@ readThrough는 목록과 같은 DB snapshot의 본인 최대 ID다. 사용자별
 다른 기기가 같은 FID를 주장하면 409다. A→B→A 교체·재동의·FID 변경 때 binding version이 증가한다.
 409는 새로운 사용자 동작과 상태 확인을 요구하며 최신 버전으로 무조건 덮어쓰지 않는다.
 
-세션은 확인한 기기 버전을 저장한다. 로그아웃은 그 버전만 서버에서 해제한 뒤 세션을 폐기한다.
+소셜 로그인 성공 시 SDK와 무관하게 세션에 현재 사용자의 기기 버전을 기록한다. 등록·현재 상태 조회도 확인한 버전을 저장한다. 로그아웃은 그 버전만 서버에서 해제한 뒤 세션을 폐기한다.
 현재 로컬 HttpSession mutex로 등록·로그인 확인·로그아웃을 직렬화한다. 세션을 분산 저장소로 바꿀 때 이 직렬화도 검토해야 한다.
-서버 로그아웃 뒤 SDK unregister가 실패해도 로그아웃 성공을 취소하지 않는다. 브라우저에는 재정리 표식만 저장한다.
+오래된 활성 바인딩의 명시적 해제는 409다. 같은 해제 재시도는 204이며 버전을 중복 증가시키지 않는다.
+끄기·로그아웃은 서버 바인딩만 비활성화하고 Firebase installation을 unregister하지 않는다. installation은 탭과 계정이
+공유하므로 SDK 삭제가 다른 탭의 새 등록을 끊을 수 있다. 브라우저 권한과 설치는 유지되며, 발송 직전 서버 검증으로
+후속 전송을 차단한다. 이미 FCM에 접수된 메시지는 표시될 수 있다. 로그아웃 UI 초기화는 SDK 응답을 기다리지 않는다.
 
 ## 설정과 출시 순서
 
@@ -102,7 +105,7 @@ FAILED 재처리는 원인과 정확한 ID·발생 시각을 검토하고 관련
 
 ## 의존성과 검증 범위
 
-Firebase Admin 9.11.0과 웹 SDK 13.0.0(Apache-2.0)을 사용한다. FID 기반 register/onRegistered/unregister와 setFid는
+Firebase Admin 9.11.0과 웹 SDK 13.0.0(Apache-2.0)을 사용한다. FID 기반 register/onRegistered와 setFid는
 [공식 웹 API](https://firebase.google.com/docs/reference/js/messaging), [Admin 릴리스](https://firebase.google.com/support/release-notes/admin/java)를 기준으로 한다.
 별도 Web Push 암호화·브라우저별 전송 구현 대신 SDK 경계로 격리했다. Admin의 Google HTTP/GAX/인증 전이 의존성이 추가된다.
 웹에서는 app/messaging만 지연 import한다. Firestore는 번들에 포함하지 않는다. 설치 의존성의 grpc-js 취약점은

@@ -444,7 +444,8 @@ HTTPS용 Compose 설정을 선택한 서버에서는 해당 도메인의 HTTPS �
 
 `.env.example`의 공개 Firebase 설정과 `VITE_NOTIFICATION_PUSH_ENABLED`를 사용한다. 기본 false이며 미설정 시 권한 팝업을 띄우지 않는다.
 비공개 Firebase 키는 브라우저에 넣지 않는다. 권한은 설정의 명시적 버튼에서만 요청한다.
-SDK는 13.0.0의 register/onRegistered(FID)/unregister를 사용하며 기존 registration token API를 사용하지 않는다.
+끄기·로그아웃은 서버 기기 바인딩을 해제합니다. 탭·계정이 공유하는 Firebase 설치는 삭제하지 않으며, 서버 로그아웃 성공 즉시 화면 상태를 비웁니다.
+SDK는 13.0.0의 register/onRegistered(FID)를 사용하며 기존 registration token API를 사용하지 않는다.
 
 `npm run dev`는 worker를 `.worker-dev/`에 먼저 빌드하고 개발 서버에서 같은 origin의 `/firebase-messaging-sw.js`로 제공한다.
 worker 코드·환경 변수를 수정하면 개발 서버를 재시작한다. production build는 앱 후 worker를 IIFE 단일 파일로 생성한다.
