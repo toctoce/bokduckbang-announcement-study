@@ -21,7 +21,7 @@ it('빈 신청은 0건으로 표시하고 실패는 빈 목록으로 위장하�
   fireEvent.click(screen.getByRole('button', { name: '다시 불러오기' }))
   expect(await screen.findByText('표시할 알림 신청이 없습니다.')).toBeVisible()
   expect(screen.getByText('0명')).toBeVisible()
-  expect(screen.getByRole('button', { name: '다음' })).toBeDisabled()
+  expect(screen.queryByRole('navigation', { name: '알림 신청 목록 페이지' })).not.toBeInTheDocument()
 })
 
 it('잘못된 URL 필터는 요청하지 않고 초기화할 수 있다', async () => {
@@ -89,21 +89,20 @@ it('신청자 정보를 한 칸으로 묶고 이메일이 없어도 회원 상�
   })
   mount()
   const table = await screen.findByRole('table', { name: '알림 신청 목록' })
-  const applicant = within(table).getByRole('cell', { name: /회원 7 상세 보기.*회원 ID 7/ })
+  const applicant = within(table).getByRole('cell', { name: /회원 7 상세 보기.*Google/ })
   expect(applicant).toHaveTextContent('Google')
-  expect(applicant).toHaveTextContent('로그인 이메일 미제공')
+  expect(applicant).toHaveTextContent('이메일 미제공')
   expect(within(applicant).getByRole('link', { name: '회원 7 상세 보기' })).toHaveAttribute('href',
     '/admin/users/7?returnTo=%2Fadmin%2Fnotification-subscriptions')
-  expect(table).toHaveTextContent('신청 시각 기록 없음')
+  expect(within(table).getByText('미확인')).toHaveAttribute('title', '신청 시각 기록 없음')
 })
 
 it('입력 중인 조건과 실제 적용된 조건을 구분하고 빈 결과에서 초기화한다', async () => {
   mount()
   await screen.findByText('표시할 알림 신청이 없습니다.')
-  const applied = screen.getByRole('list', { name: '적용된 검색 조건' })
-  expect(applied).toHaveTextContent('상태: 활성')
+  expect(screen.queryByRole('list', { name: '적용된 검색 조건' })).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('신청 상태'), { target: { value: 'CANCELLED' } })
-  expect(applied).toHaveTextContent('상태: 활성')
+  expect(screen.queryByRole('list', { name: '적용된 검색 조건' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '검색' }))
   await waitFor(() => expect(screen.getByRole('list', { name: '적용된 검색 조건' })).toHaveTextContent('상태: 취소'))
   expect(await screen.findByRole('button', { name: '검색 조건 초기화' })).toBeVisible()
@@ -117,8 +116,25 @@ it('대상 ID 필터가 있는 주소는 상세 검색을 펼쳐 숨겨진 조�
   await screen.findByText('표시할 알림 신청이 없습니다.')
   const input = screen.getByLabelText('대상 ID')
   expect(input.closest('details')).toHaveAttribute('open')
-  expect(input).toHaveAccessibleDescription(/지역 코드나 단지·공고 ID/)
+  expect(input).toHaveAccessibleDescription('지역 코드 또는 단지·공고 ID')
   expect(screen.getByRole('list', { name: '적용된 검색 조건' })).toHaveTextContent('대상 ID: 11')
   fireEvent.click(screen.getByRole('button', { name: '검색 조건 초기화' }))
   await waitFor(() => expect(screen.getByLabelText('대상 ID').closest('details')).not.toHaveAttribute('open'))
+})
+
+it('한 페이지는 이동 버튼을 생략하고 여러 페이지일 때만 이동할 수 있다', async () => {
+  const item = { id: '1', userId: '7', email: null, provider: 'GOOGLE' as const, targetType: 'REGION' as const,
+    targetId: '11', targetName: '서울특별시 전체', status: 'ACTIVE' as const, requestedAt: null,
+    expiresAt: '2027-10-13T00:00:00Z' }
+  vi.mocked(loadNotificationSubscriptions).mockResolvedValueOnce({ ...page, items: [item], totalElements: 1, totalPages: 1 })
+    .mockImplementation(async query => ({ ...page, items: [item], page: Number(query.get('page')),
+      totalElements: 21, totalPages: 2, hasNext: query.get('page') === '0' }))
+  mount()
+  await screen.findByRole('table')
+  expect(screen.queryByRole('navigation', { name: '알림 신청 목록 페이지' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '새로고침' }))
+  const navigation = await screen.findByRole('navigation', { name: '알림 신청 목록 페이지' })
+  fireEvent.click(within(navigation).getByRole('button', { name: '다음' }))
+  await waitFor(() => expect(vi.mocked(loadNotificationSubscriptions).mock.lastCall?.[0].get('page')).toBe('1'))
+  await waitFor(() => expect(within(navigation).getByRole('button', { name: '2페이지' })).toHaveAttribute('aria-current', 'page'))
 })
