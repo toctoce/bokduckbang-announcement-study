@@ -41,11 +41,12 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
     }
   }, [repository, userId, sessionExpired])
   useEffect(() => {
-    generation.current++
+    const currentGeneration = generation
+    currentGeneration.current++
     const abort = new AbortController()
     controller.current = abort
     setBusy(false); setActionError(''); setFailedItem(null)
-    return () => { generation.current++; abort.abort() }
+    return () => { currentGeneration.current++; abort.abort() }
   }, [userId])
   useEffect(() => {
     const abort = new AbortController()

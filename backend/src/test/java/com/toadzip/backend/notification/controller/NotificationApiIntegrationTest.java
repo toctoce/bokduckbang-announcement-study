@@ -132,6 +132,6 @@ class NotificationApiIntegrationTest {
         var announcement = fixtures.announcement();
         fixtures.link(announcement, fixtures.complex("11140", "1114010100"));
         long eventId = fixtures.event(announcement);
-        return notifications.insertIfAbsent(userId, eventId, announcement.getId(), announcement.getName(), NOW);
+        return notifications.insertIfAbsent(userId, eventId, announcement.getId(), announcement.getName(), NOW).id();
     }
 }

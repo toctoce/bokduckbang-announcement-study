@@ -8,6 +8,8 @@ import com.toadzip.backend.notification.repository.FirebaseNotificationPushSende
 import com.toadzip.backend.notification.repository.NotificationAudienceRepository;
 import com.toadzip.backend.notification.repository.NotificationDeliveryRepository;
 import com.toadzip.backend.notification.repository.NotificationPushSender;
+import com.toadzip.backend.notification.repository.ObservedNotificationPushSender;
+import io.micrometer.core.instrument.MeterRegistry;
 import com.toadzip.backend.notification.service.NotificationDeliveryService;
 import java.io.IOException;
 import java.time.Clock;
@@ -36,9 +38,9 @@ public class FirebaseNotificationConfiguration {
 
     @Bean
     public NotificationPushSender notificationPushSender(@Qualifier("notificationFirebaseApp") FirebaseApp app,
-            NotificationProperties properties, Clock clock) {
-        return new FirebaseNotificationPushSender(FirebaseMessaging.getInstance(app), properties.frontendOrigin(), clock,
-                Duration.ofSeconds(30));
+            NotificationProperties properties, Clock clock, MeterRegistry meters) {
+        return new ObservedNotificationPushSender(new FirebaseNotificationPushSender(FirebaseMessaging.getInstance(app), properties.frontendOrigin(), clock,
+                Duration.ofSeconds(30)), meters);
     }
 
     @Bean

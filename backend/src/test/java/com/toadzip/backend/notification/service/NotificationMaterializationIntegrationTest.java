@@ -28,6 +28,21 @@ class NotificationMaterializationIntegrationTest {
     }
 
     @Test
+    void 이미_만든_알림을_재처리해도_나중에_등록한_기기에_소급_발송하지_않는다() {
+        var announcement = fixtures.announcement();
+        fixtures.link(announcement, fixtures.complex("11140", "1114010100"));
+        long event = fixtures.event(announcement);
+        fixtures.user(190);
+        fixtures.subscribe(190, "REGION", "11", NOW.minusSeconds(60));
+        service.materializeNextPage(NOW, 200);
+        fixtures.device(190);
+        jdbc.update("UPDATE notification_outbox_events SET status='PENDING',recipient_cursor=0 WHERE id=?", event);
+        service.materializeNextPage(NOW.plusSeconds(60), 200);
+        assertThat(count("user_notifications")).isOne();
+        assertThat(count("notification_deliveries")).isZero();
+    }
+
+    @Test
     void 지역과_단지와_공급행이_겹쳐도_회원별로_한건만_생성한다() {
         var announcement = fixtures.announcement();
         var complex = fixtures.complex("11140", "1114010100");

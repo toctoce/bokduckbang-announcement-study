@@ -79,9 +79,10 @@ public class NotificationDeliveryRepository {
         Timestamp finished = Timestamp.from(now);
         if (result.status() == NotificationSendResult.Status.RETRYABLE
                 && !retry.isExhausted(delivery.attempts(), delivery.occurredAt(), now)) {
-            next = retry.nextAttemptAt(now, delivery.attempts(), result.retryAfter(),
+            Instant candidate = retry.nextAttemptAt(now, delivery.attempts(), result.retryAfter(),
                     Duration.ofSeconds(ThreadLocalRandom.current().nextLong(16)));
-            if (next.isBefore(delivery.occurredAt().plus(Duration.ofHours(24)))) {
+            if (candidate.isBefore(delivery.occurredAt().plus(Duration.ofHours(24)))) {
+                next = candidate;
                 status = "RETRY";
                 finished = null;
             }

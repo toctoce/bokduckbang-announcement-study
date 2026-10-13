@@ -54,9 +54,11 @@ public class NotificationMaterializationService {
                 event.recipientCursor(), upper, pageSize, now);
         long cursor = event.recipientCursor();
         for (long userId : recipients) {
-            long notificationId = notifications.insertIfAbsent(userId, event.id(), event.announcementId(),
+            var inserted = notifications.insertIfAbsent(userId, event.id(), event.announcementId(),
                     snapshot.title(), now);
-            deliveries.enqueueForCurrentDevices(notificationId, now);
+            if (inserted.created()) {
+                deliveries.enqueueForCurrentDevices(inserted.id(), now);
+            }
             cursor = userId;
         }
         outbox.advance(event.id(), cursor, recipients.size() < pageSize);

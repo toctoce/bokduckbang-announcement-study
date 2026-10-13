@@ -10,6 +10,15 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @EnableConfigurationProperties(NotificationProperties.class)
 public class NotificationJobConfiguration {
     @Bean(defaultCandidate = false)
+    @ConditionalOnProperty(name = "app.notification.maintenance-enabled", havingValue = "true")
+    public ThreadPoolTaskScheduler notificationMaintenanceScheduler() {
+        var scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("notification-maintenance-");
+        return scheduler;
+    }
+
+    @Bean(defaultCandidate = false)
     @ConditionalOnProperty(name = "app.notification.delivery-enabled", havingValue = "true")
     public ThreadPoolTaskScheduler notificationDeliveryScheduler() {
         var scheduler = new ThreadPoolTaskScheduler();

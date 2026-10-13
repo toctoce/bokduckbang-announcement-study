@@ -106,7 +106,7 @@ class NotificationReadConcurrencyIntegrationTest {
     }
 
     private long insert(int index) {
-        return notifications.insertIfAbsent(MEMBER, events.get(index), announcements.get(index), "새 공고", NOW);
+        return notifications.insertIfAbsent(MEMBER, events.get(index), announcements.get(index), "새 공고", NOW).id();
     }
 
     private void awaitAdvisoryWait(int pid) {

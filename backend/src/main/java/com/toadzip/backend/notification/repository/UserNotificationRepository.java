@@ -29,7 +29,7 @@ public class UserNotificationRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public long insertIfAbsent(long userId, long eventId, long announcementId, String title, Instant now) {
+    public InsertedNotification insertIfAbsent(long userId, long eventId, long announcementId, String title, Instant now) {
         lockUser(userId);
         List<Long> inserted = jdbc.query("""
                 INSERT INTO user_notifications(user_id,event_id,announcement_id,title,created_at,expires_at)
@@ -37,10 +37,14 @@ public class UserNotificationRepository {
                 """, (row, number) -> row.getLong(1), userId, eventId, announcementId, title,
                 Timestamp.from(now), Timestamp.from(now.plus(Duration.ofDays(90))));
         if (!inserted.isEmpty()) {
-            return inserted.getFirst();
+            return new InsertedNotification(inserted.getFirst(), true);
         }
-        return jdbc.queryForObject("SELECT id FROM user_notifications WHERE user_id=? AND event_id=?",
+        long id = jdbc.queryForObject("SELECT id FROM user_notifications WHERE user_id=? AND event_id=?",
                 Long.class, userId, eventId);
+        return new InsertedNotification(id, false);
+    }
+
+    public record InsertedNotification(long id, boolean created) {
     }
 
     public long countUnread(long userId, Instant now) {

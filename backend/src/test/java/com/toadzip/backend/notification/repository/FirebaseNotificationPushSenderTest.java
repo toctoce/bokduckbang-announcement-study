@@ -74,6 +74,15 @@ class FirebaseNotificationPushSenderTest {
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
     }
 
+    @Test
+    void 과도한_RetryAfter는_재시도_유효기간_밖으로_제한한다() {
+        var response = mock(IncomingHttpResponse.class);
+        when(response.getHeaders()).thenReturn(Map.of("Retry-After", List.of(Long.toString(Long.MAX_VALUE))));
+        failWith(MessagingErrorCode.QUOTA_EXCEEDED, response);
+        var result = sender(Duration.ofSeconds(30)).send(delivery);
+        assertThat(result.retryAfter()).isEqualTo(now.plus(Duration.ofHours(24)));
+    }
+
     private FirebaseNotificationPushSender sender(Duration deadline) {
         return new FirebaseNotificationPushSender(messaging, "https://example.com", Clock.fixed(now, ZoneOffset.UTC),
                 deadline);

@@ -109,7 +109,7 @@ public class FirebaseNotificationPushSender implements NotificationPushSender {
         }
         String header = value.toString().trim();
         try {
-            return clock.instant().plusSeconds(Math.max(0, Long.parseLong(header)));
+            return clock.instant().plusSeconds(Math.min(86400, Math.max(0, Long.parseLong(header))));
         } catch (NumberFormatException exceptionIgnored) {
             try {
                 return ZonedDateTime.parse(header, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
