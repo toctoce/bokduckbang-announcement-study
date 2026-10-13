@@ -160,6 +160,50 @@ class AdminNotificationManagementIntegrationTest {
     }
 
     @Test
+    void 이전_동_코드의_신청도_원문_ID와_현재_동_이름을_표시한다() throws Exception {
+        long member = member("google:neighborhood-alias", null);
+        subscription(member, "REGION", "2911010100", true, NOW.plusSeconds(1));
+        mockMvc.perform(get(ENDPOINT).param("targetId", "2911010100").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].targetId").value("2911010100"))
+                .andExpect(jsonPath("$.data.items[0].targetName").value("전남광주통합특별시 동구 대인동"));
+    }
+
+    @Test
+    void 고지_신청일을_표시하고_동률과_미확인_신청도_페이지를_안정적으로_조회한다() throws Exception {
+        long member = member("google:notice-order", null);
+        subscription(member, "REGION", "11", true, NOW.plusSeconds(1));
+        subscription(member, "REGION", "26", true, NOW.plusSeconds(1));
+        subscription(member, "REGION", "27", true, NOW.plusSeconds(1));
+        subscription(member, "REGION", "28", true, NOW.plusSeconds(1));
+        notice(member, "11", NOW.minusSeconds(3600));
+        notice(member, "26", NOW);
+        notice(member, "27", NOW);
+        long other = member("google:other-notice", null);
+        subscription(other, "REGION", "11", true, NOW.plusSeconds(1));
+        notice(other, "11", NOW.plusSeconds(3600));
+
+        mockMvc.perform(get(ENDPOINT).param("userId", Long.toString(member)).param("size", "2")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].targetId").value("27"))
+                .andExpect(jsonPath("$.data.items[1].targetId").value("26"))
+                .andExpect(jsonPath("$.data.items[0].requestedAt").value(NOW.toString()))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.totalElements").value(4))
+                .andExpect(jsonPath("$.data.summary.activeSubscriptions").value(4));
+        mockMvc.perform(get(ENDPOINT).param("userId", Long.toString(member)).param("size", "2").param("page", "1")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].targetId").value("11"))
+                .andExpect(jsonPath("$.data.items[0].requestedAt").value(NOW.minusSeconds(3600).toString()))
+                .andExpect(jsonPath("$.data.items[1].targetId").value("28"))
+                .andExpect(jsonPath("$.data.items[1].requestedAt").isEmpty())
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.totalElements").value(4));
+    }
+
+    @Test
     void 관리자만_신청을_조회할_수_있으며_없는_회원은_404다() throws Exception {
         long member = member("google:1", null);
         mockMvc.perform(get(ENDPOINT)).andExpect(status().isUnauthorized());
@@ -180,6 +224,17 @@ class AdminNotificationManagementIntegrationTest {
         return jdbc.sql("""
                 INSERT INTO users(login_identifier,email,created_at) VALUES (:identifier,:email,now()) RETURNING id
                 """).param("identifier", identifier).param("email", email).query(Long.class).single();
+    }
+
+    private void notice(long userId, String targetId, Instant requestedAt) {
+        jdbc.sql("""
+                INSERT INTO privacy_notification_notices
+                    (user_id,target_type,target_id,notice_version,requested_at,expires_at,purge_after)
+                VALUES (:userId,'REGION',:targetId,'fixture-notice',:requestedAt,:expiresAt,:purgeAfter)
+                """).param("userId", userId).param("targetId", targetId)
+                .param("requestedAt", java.sql.Timestamp.from(requestedAt))
+                .param("expiresAt", java.sql.Timestamp.from(NOW.plusSeconds(7200)))
+                .param("purgeAfter", java.sql.Timestamp.from(NOW.plusSeconds(10800))).update();
     }
 
     private void subscription(long userId, String type, String targetId, boolean active, Instant expiry) {

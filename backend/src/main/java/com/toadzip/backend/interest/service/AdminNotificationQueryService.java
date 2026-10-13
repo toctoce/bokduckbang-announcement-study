@@ -60,6 +60,10 @@ public class AdminNotificationQueryService {
             return regionCodes.equivalentProvinceCodes(region.regionCode())
                     .orElseGet(() -> Set.of(region.regionCode()));
         }
+        if (region.regionCode().length() == 10) {
+            return regionCodes.filterCodes(region.regionCode())
+                    .orElseGet(() -> Set.of(region.regionCode()));
+        }
         return regionCodes.equivalentCodes(region.regionCode())
                 .orElseGet(() -> Set.of(region.regionCode()));
     }
