@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { Link, MemoryRouter } from 'react-router'
 import { DocumentCorrectionPanel } from './DocumentCorrectionPanel'
 import { ManagementError } from '../management/api'
 import type { ManagementDetailData } from '../management/managementContract'
@@ -27,9 +27,10 @@ beforeEach(() => {
   mocks.openPdf.mockResolvedValue({ fileName: '공고.pdf', sha256: document.sha256, totalPages: 3, extract: mocks.extract, destroy: mocks.destroy })
   mocks.requestManagementApi.mockResolvedValue(detail)
 })
-async function setup() {
+afterEach(() => vi.restoreAllMocks())
+async function setup(withNavigation = false) {
   const onSaved = vi.fn(); const onReload = vi.fn()
-  const view = render(<MemoryRouter><DocumentCorrectionPanel resource="complexes" detail={detail} onSaved={onSaved} onReload={onReload} onBusyChange={vi.fn()} /></MemoryRouter>)
+  const view = render(<MemoryRouter><DocumentCorrectionPanel resource="complexes" detail={detail} onSaved={onSaved} onReload={onReload} onBusyChange={vi.fn()} />{withNavigation ? <Link to="/admin/complexes">목록으로 돌아가기</Link> : null}</MemoryRouter>)
   fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://example.com/notice.pdf' } })
   fireEvent.change(screen.getByLabelText('공식 PDF 파일'), { target: { files: [new File(['%PDF-'], '공고.pdf')] } })
   fireEvent.click(await screen.findByRole('button', { name: '선택 페이지 추출' }))
@@ -38,6 +39,7 @@ async function setup() {
 }
 async function imported() {
   const context = await setup()
+  fireEvent.click(screen.getByRole('button', { name: '에이전트 결과 가져오기' }))
   fireEvent.change(screen.getByLabelText('에이전트 결과 JSON'), { target: { value: json } })
   fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
   return context
@@ -81,10 +83,31 @@ it('수기 입력도 원문 인용을 확인하며 수정안을 만들 수 있�
 })
 it('잘못된 근거 결과는 검토 항목을 만들지 않는다', async () => {
   await setup()
+  fireEvent.click(screen.getByRole('button', { name: '에이전트 결과 가져오기' }))
   fireEvent.change(screen.getByLabelText('에이전트 결과 JSON'), { target: { value: json.replace('전체 120세대', '없는 문장') } })
   fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
   expect(screen.getByRole('alert')).toHaveTextContent('원문 인용')
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+})
+it('추출 후 직접 입력을 먼저 보여주고 에이전트 결과는 선택해서 가져온다', async () => {
+  await setup()
+  expect(screen.getByText(/자료 다시 선택/).closest('details')).not.toHaveAttribute('open')
+  expect(screen.getByLabelText('수정할 값')).toBeVisible()
+  fireEvent.change(screen.getByLabelText('수정할 값'), { target: { value: '120' } })
+  expect(screen.queryByLabelText('에이전트 결과 JSON')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '에이전트 결과 가져오기' }))
+  expect(screen.getByLabelText('에이전트 결과 JSON')).toBeVisible()
+  expect(screen.getByLabelText('수정할 값')).not.toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
+  expect(screen.getByLabelText('수정할 값')).toHaveValue('120')
+})
+it('수기 수정안을 추가하기 전에도 이동을 취소하면 작성한 값을 보존한다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  await setup(true)
+  fireEvent.change(screen.getByLabelText('수정할 값'), { target: { value: '120' } })
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
+  expect(confirm).toHaveBeenCalledOnce()
+  expect(screen.getByLabelText('수정할 값')).toHaveValue('120')
 })
 it('화면을 닫으면 PDF와 미리보기 URL을 해제한다', async () => {
   const { unmount } = await setup(); unmount()
@@ -109,6 +132,7 @@ it('임대조건의 조회 당시 값을 보내고 수집 충돌이면 수정안
   const targetJson = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: 'announcements:7:target:9',
     version: 2, sha256: document.sha256, unresolved: [], proposals: [{ field: 'rentalDeposit', value: '12000000',
       page: 2, quote: '임대보증금 12000000원', unit: '원', scope: '해당 공급대상', reason: '원문 확인' }] })
+  fireEvent.click(screen.getByRole('button', { name: '에이전트 결과 가져오기' }))
   fireEvent.change(screen.getByLabelText('에이전트 결과 JSON'), { target: { value: targetJson } })
   fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
   fireEvent.click(screen.getByRole('checkbox', { name: '임대보증금 원문 확인' }))
