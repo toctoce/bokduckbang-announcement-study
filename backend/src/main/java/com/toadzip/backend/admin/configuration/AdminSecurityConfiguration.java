@@ -73,7 +73,6 @@ public class AdminSecurityConfiguration {
                         .requestMatchers("/api/admin/**").hasRole(AdminRole.ADMIN.name())
                         .requestMatchers("/api/auth/me", "/api/auth/logout").hasRole("USER")
                         .requestMatchers("/api/v1/privacy/analytics/me").hasRole("USER")
-                        .requestMatchers(HttpMethod.GET, "/api/v1/notification-subscriptions/guest").permitAll()
                         .requestMatchers("/api/v1/notification-subscriptions/**").hasRole("USER")
                         .anyRequest().permitAll()
                 )
@@ -105,7 +104,7 @@ public class AdminSecurityConfiguration {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(allowedOrigin));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
-        configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "X-Notification-Client-Id"));
+        configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
