@@ -59,4 +59,13 @@ describe('PDF 근거 검토', () => {
     }
     expect(() => parseReviewResult(packet('10000000', '만원'), condition, document)).toThrow()
   })
+  it('임대조건 수정은 조회 당시 값을 함께 보내 선택하지 않은 최신 값의 덮어쓰기를 차단한다', () => {
+    const current = { target: '청년', rentalDeposit: '10000000', monthlyRent: '200000' }
+    const condition = reviewTarget('announcements', { ...detail,
+      supplyTargets: [{ id: 9, supplyRowId: 8, data: current }] }, 'target:9')
+    const body = correctionBody(condition, [{ ...proposal, field: 'rentalDeposit', value: '12000000' }],
+      document, 'https://example.com/a.pdf', '보증금 확인')
+    expect(body).toMatchObject({ rentalDeposit: '12000000', monthlyRent: '200000', expectedValues: current })
+    expect(current.rentalDeposit).toBe('10000000')
+  })
 })

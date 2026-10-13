@@ -125,6 +125,7 @@ export function correctionBody(target: ReviewTarget, proposals: Proposal[], docu
   const url = safeDocumentUrl(sourceUrl)
   if (!url || !string(note) || !proposals.length) throw new Error('공식 출처 URL과 확인 메모, 반영할 항목을 입력해 주세요.')
   const body = structuredClone(target.body)
+  if (target.endpoint.includes('/supply-targets/')) body.expectedValues = structuredClone(target.current)
   const data = target.endpoint.includes('/supply-rows/') && isRecord(body.supplyRow) ? body.supplyRow as ManagementValues : body
   for (const proposal of proposals) {
     const [parent, child] = proposal.field.split('.')

@@ -100,6 +100,9 @@ public class AdminAnnouncementManagementService {
         var target = targets.findById(targetId)
                 .filter(value -> value.getSupplyRow().getAnnouncement().getId().equals(id))
                 .orElseThrow(AnnouncementNotFoundException::new);
+        if (!targetData(target).data().equals(request.expectedValues())) {
+            throw new AdminDataConflictException("임대조건이 변경되었습니다. 새로 조회한 뒤 다시 확인해 주세요.");
+        }
         String before = json.writeValueAsString(targetData(target));
         target.reviseByAdmin(request.target(), request.supplyRank(), request.supplyHouseholdCount(),
                 request.reserveCount(), request.rentalDeposit(), request.monthlyRent(), request.convertedDeposit(),

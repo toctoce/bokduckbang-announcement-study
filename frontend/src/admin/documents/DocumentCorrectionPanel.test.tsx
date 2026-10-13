@@ -91,3 +91,33 @@ it('화면을 닫으면 PDF와 미리보기 URL을 해제한다', async () => {
   expect(mocks.destroy).toHaveBeenCalledOnce()
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test')
 })
+it('임대조건의 조회 당시 값을 보내고 수집 충돌이면 수정안을 유지한다', async () => {
+  const current = { target: '청년', supplyRank: null, supplyHouseholdCount: 5, reserveCount: null,
+    rentalDeposit: '10000000', monthlyRent: '200000', convertedDeposit: null, applicationCondition: null }
+  const targetDetail = { ...detail, supplyTargets: [{ id: 9, supplyRowId: 8, data: current }] }
+  mocks.extract.mockResolvedValue({ ...document,
+    pages: [{ page: 2, text: '임대보증금 12000000원', items: [], requiresOcr: false }] })
+  mocks.requestManagementApi.mockRejectedValue(new ManagementError('임대조건이 변경되었습니다.', 409))
+  const onSaved = vi.fn()
+  render(<MemoryRouter><DocumentCorrectionPanel resource="announcements" detail={targetDetail}
+    onSaved={onSaved} onReload={vi.fn()} onBusyChange={vi.fn()} /></MemoryRouter>)
+  fireEvent.change(screen.getByLabelText('보완 대상'), { target: { value: 'target:9' } })
+  fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://example.com/notice.pdf' } })
+  fireEvent.change(screen.getByLabelText('공식 PDF 파일'), { target: { files: [new File(['%PDF-'], '공고.pdf')] } })
+  fireEvent.click(await screen.findByRole('button', { name: '선택 페이지 추출' }))
+  await screen.findByRole('heading', { name: '2. 추출 근거 확인' })
+  const targetJson = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: 'announcements:7:target:9',
+    version: 2, sha256: document.sha256, unresolved: [], proposals: [{ field: 'rentalDeposit', value: '12000000',
+      page: 2, quote: '임대보증금 12000000원', unit: '원', scope: '해당 공급대상', reason: '원문 확인' }] })
+  fireEvent.change(screen.getByLabelText('에이전트 결과 JSON'), { target: { value: targetJson } })
+  fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: '임대보증금 원문 확인' }))
+  fireEvent.change(screen.getByLabelText('확인 메모'), { target: { value: '보증금 확인' } })
+  fireEvent.click(screen.getByRole('button', { name: '확인한 1개 항목 반영' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('임대조건이 변경되었습니다.')
+  expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/announcements/7/supply-targets/9', 'PUT',
+    expect.objectContaining({ rentalDeposit: '12000000', monthlyRent: '200000', expectedValues: current }))
+  expect(screen.getByLabelText('에이전트 결과 JSON')).toHaveValue(targetJson)
+  expect(screen.getByRole('button', { name: '확인한 1개 항목 반영' })).toBeDisabled()
+  expect(onSaved).not.toHaveBeenCalled()
+})

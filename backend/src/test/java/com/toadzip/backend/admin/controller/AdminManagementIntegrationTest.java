@@ -504,6 +504,7 @@ class AdminManagementIntegrationTest {
                  "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
                  "applicationCondition":"공고문 참조","documentEvidence":%s}
                 """.formatted(version, documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\""));
+        body = withExpectedTargetValues(path, body);
         mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
@@ -536,6 +537,7 @@ class AdminManagementIntegrationTest {
         String body = """
                 {"version":%d,"target":"청년","rentalDeposit":"999999999999999999","monthlyRent":null}
                 """.formatted(version);
+        body = withExpectedTargetValues(path, body);
         String endpoint = path + "/supply-targets/" + target.getId();
         mvc.perform(put(endpoint).with(user(memberId()).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
@@ -546,7 +548,8 @@ class AdminManagementIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
         for (String invalid : java.util.List.of(body.replace("999999999999999999", "-1"),
                 body.replace("999999999999999999", "1.5"),
-                body.replace("999999999999999999", "1000000000000000000"), body.replace("청년", " "))) {
+                body.replace("999999999999999999", "1000000000000000000"), body.replace("청년", " "),
+                body.replace("\"expectedValues\":{", "\"unusedValues\":{"))) {
             mvc.perform(put(endpoint).with(user("admin").roles("ADMIN")).with(csrf())
                             .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
         }
@@ -555,6 +558,44 @@ class AdminManagementIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("999999999999999999"))
                 .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").isEmpty());
+    }
+
+    @Test
+    void 공고_버전이_같아도_수집으로_바뀐_임대조건은_이전_수정안으로_덮어쓰지_않는다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
+        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+                "LH:CONCURRENT", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
+                new java.math.BigDecimal("200000"), 0);
+        entityManager.persist(target);
+        entityManager.flush();
+        var detail = getData(path);
+        long version = detail.get("data").get("version").asLong();
+        var body = (tools.jackson.databind.node.ObjectNode) detail.get("supplyTargets").get(0).get("data").deepCopy();
+        body.set("expectedValues", body.deepCopy());
+        body.put("version", version);
+        body.put("rentalDeposit", "12000000");
+        target.updateFromSource("청년", "1순위", 5, new java.math.BigDecimal("10000000"),
+                new java.math.BigDecimal("250000"), 0);
+        entityManager.flush();
+        assertThat(getData(path).get("data").get("version").asLong()).isEqualTo(version);
+
+        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isConflict());
+
+        assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
+        assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
+        assertThat(target.isAdminModified()).isFalse();
+        assertThat(getData(path + "/changes").size()).isZero();
+    }
+
+    private String withExpectedTargetValues(String path, String body) throws Exception {
+        var values = (tools.jackson.databind.node.ObjectNode) json.readTree(body);
+        values.set("expectedValues", getData(path).get("supplyTargets").get(0).get("data"));
+        return values.toString();
     }
 
     private String documentEvidence() {

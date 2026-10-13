@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.dto.request;
 
 import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
+import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail.SupplyTargetData;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -20,4 +21,5 @@ public record AdminSupplyTargetUpdateRequest(
         @PositiveOrZero @Digits(integer = 18, fraction = 0) BigDecimal monthlyRent,
         @PositiveOrZero @Digits(integer = 18, fraction = 0) BigDecimal convertedDeposit,
         @Size(max = 255) @Pattern(regexp = "(?s).*\\S.*") String applicationCondition,
+        @NotNull SupplyTargetData expectedValues,
         @Valid AdminDocumentEvidence documentEvidence) { }
