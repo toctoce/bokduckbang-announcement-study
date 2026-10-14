@@ -41,6 +41,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
   const status = params.get(statusKey) ?? (userId ? 'ALL' : 'ACTIVE')
   const review = userId ? 'ALL' : params.get('review') ?? (params.get('view') === 'review' ? 'ANY' : 'ALL')
   const groupTarget = !userId && params.get('groupTarget') === 'true'
+  const reviewView = !userId && params.get('view') === 'review'
   const pageValue = params.get(pageKey) ?? '0', page = Number(pageValue)
   const targetType = userId ? '' : params.get('targetType') ?? '', targetId = userId ? '' : params.get('targetId') ?? ''
   const [keyword, setKeyword] = useState('')
@@ -70,6 +71,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       const next = userId ? new URLSearchParams(current) : new URLSearchParams()
       next.delete(pageKey)
       next.delete(statusKey)
+      if (reviewView) { next.set('view', 'review'); next.set('status', 'ALL'); next.set('review', 'ANY') }
       return next
     })
   }
@@ -133,17 +135,21 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       </> : null}
       <label>신청 상태<select name="status" defaultValue={status}>{Object.entries(statusLabels).map(([value, label]) =>
         <option key={value} value={value}>{label}</option>)}</select></label>
-      {!userId ? <label>확인 항목<select name="review" defaultValue={review}>{Object.entries(reviewLabels).map(([value, label]) =>
+      {reviewView ? <label>확인 항목<select name="review" defaultValue={review}>{Object.entries(reviewLabels).map(([value, label]) =>
         <option key={value} value={value}>{label}</option>)}</select></label> : null}
       <div className={styles.actions}><Button data-design-system type="submit">검색</Button><button type="button" onClick={resetFilters}>초기화</button></div>
-      {!userId ? <details className={styles.advanced} open={Boolean(targetId) || undefined}>
+      {!userId ? <details className={styles.advanced} open={Boolean(targetId || !reviewView && review !== 'ALL') || undefined}>
         <summary>상세 검색</summary>
-        <div><label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19}
+        <div>{!reviewView ? <label>확인 항목<select name="review" defaultValue={review}>{Object.entries(reviewLabels).map(([value, label]) =>
+          <option key={value} value={value}>{label}</option>)}</select></label> : null}
+          <label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19}
           pattern="[0-9]{1,19}" aria-describedby={`${helpId}-target`} placeholder="예: 11" /></label>
           <p id={`${helpId}-target`}>지역 코드 또는 단지·공고 ID{groupTarget ? ' · 같은 대상의 이전 코드·선행 0 신청도 포함' : ''}</p></div>
       </details> : null}
     </form>
-    {review !== 'ALL' ? <p className={styles.meta}>기록이 없는 과거 신청도 포함됩니다. 이메일 미제공은 정상이며 확인 필요 항목으로 분류하지 않습니다.</p> : null}
+    {reviewView ? <details className={styles.explanation}><summary>확인 항목 기준</summary>
+      <p>대상 확인 불가는 현재 대상 정보를 찾을 수 없는 신청입니다. 신청일 미확인은 신청 시각 기록이 없는 신청입니다. 이메일 미제공만으로는 확인 필요 항목에 포함하지 않습니다.</p>
+    </details> : null}
     </div>
     {error ? <div className={styles.error} role="alert"><p>{error}</p>{valid ? <button type="button"
       onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button> : null}</div> : null}

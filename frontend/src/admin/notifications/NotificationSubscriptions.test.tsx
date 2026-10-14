@@ -13,6 +13,17 @@ function mount(path = '/admin/notification-subscriptions') {
   return render(<MemoryRouter initialEntries={[path]}><Location /><NotificationManagementPage /></MemoryRouter>)
 }
 
+it('일반 신청 검색은 점검 조건을 상세 검색에 두고 적용된 점검 조건은 펼쳐 보여 준다', async () => {
+  const view = mount()
+  await screen.findByText('표시할 알림 신청이 없습니다.')
+  expect(screen.getByLabelText('확인 항목').closest('details')).not.toHaveAttribute('open')
+  view.unmount()
+  mount('/admin/notification-subscriptions?review=TARGET_UNAVAILABLE')
+  await screen.findByText('표시할 알림 신청이 없습니다.')
+  expect(screen.getByLabelText('확인 항목').closest('details')).toHaveAttribute('open')
+  expect(screen.getByRole('list', { name: '적용된 검색 조건' })).toHaveTextContent('확인: 대상 확인 불가')
+})
+
 it('빈 신청은 0건으로 표시하고 실패는 빈 목록으로 위장하지 않는다', async () => {
   vi.mocked(loadNotificationSubscriptions).mockRejectedValueOnce(new Error('목록 연결 실패')).mockResolvedValue(page)
   mount()

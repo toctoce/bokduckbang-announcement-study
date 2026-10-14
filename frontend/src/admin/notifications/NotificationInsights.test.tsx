@@ -47,10 +47,32 @@ it('확인 필요 목록은 전체 상태를 조회하며 확인 사유를 구�
 it('기간별 추이에서 수집 전 날짜는 미집계로 표시하고 기간을 바꾼다', async () => {
   const fetcher = setup()
   fireEvent.click(screen.getByRole('link', { name: '신청·취소 추이' }))
-  expect(await screen.findByRole('table', { name: '일별 신청·취소' })).toHaveTextContent('미집계')
+  const table = await screen.findByRole('table', { name: '일별 신청·취소' })
+  expect(table).toHaveTextContent('2026-10-14')
+  expect(table).not.toHaveTextContent('2026-10-13')
+  fireEvent.click(screen.getByRole('button', { name: '미집계 1일 보기' }))
+  expect(table).toHaveTextContent('2026-10-13')
+  expect(table).toHaveTextContent('미집계')
+  fireEvent.click(screen.getByRole('button', { name: '미집계 날짜 접기' }))
+  expect(table).not.toHaveTextContent('2026-10-13')
   expect(screen.getByText('집계 기간 신청')).toBeVisible()
   fireEvent.change(screen.getByLabelText('조회 기간'), { target: { value: '7' } })
   await waitFor(() => expect(fetcher.mock.calls.some(([input]) => String(input).includes('/trend?days=7'))).toBe(true))
+})
+
+it('확인 필요 목록의 초기화는 해당 보기와 기본 점검 조건을 유지한다', async () => {
+  const fetcher = setup()
+  fireEvent.click(screen.getByRole('link', { name: '확인 필요' }))
+  await screen.findByText('표시할 알림 신청이 없습니다.')
+  fireEvent.change(screen.getByLabelText('확인 항목'), { target: { value: 'REQUEST_DATE_UNKNOWN' } })
+  fireEvent.change(screen.getByLabelText('신청 상태'), { target: { value: 'CANCELLED' } })
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await waitFor(() => expect(String(fetcher.mock.lastCall?.[0])).toContain('review=REQUEST_DATE_UNKNOWN'))
+  fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+  await waitFor(() => expect(String(fetcher.mock.lastCall?.[0])).toContain('review=ANY'))
+  expect(screen.getByLabelText('현재 경로')).toHaveTextContent('view=review')
+  expect(screen.getByLabelText('신청 상태')).toHaveValue('ALL')
+  expect(screen.getByLabelText('확인 항목')).toHaveValue('ANY')
 })
 
 it('대상 조건을 바꾸어 성공한 뒤 이전 조건으로 돌아오면 과거 오류가 남지 않는다', async () => {
