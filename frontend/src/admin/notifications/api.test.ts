@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { loadNotificationSubscriptions } from './api'
+import { loadNotificationSubscriptions, loadNotificationTargets, loadNotificationTrend } from './api'
 
 afterEach(() => vi.unstubAllGlobals())
 const item = { id: '9007199254740993', userId: '9007199254740995', email: null, provider: 'GOOGLE', targetType: 'REGION',
@@ -44,4 +44,25 @@ it('기존 신청에서 허용한 선행 0 대상 ID를 원문 그대로 표시�
 it('권한 오류의 상태와 설명을 보존한다', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ message: '접근 권한이 없습니다.' }, { status: 403 })))
   await expect(loadNotificationSubscriptions(new URLSearchParams())).rejects.toMatchObject({ status: 403, message: '접근 권한이 없습니다.' })
+})
+
+it('대상별 현황은 인증 쿠키와 요청 취소 신호를 전달한다', async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json({ data: { items: [{ targetType: 'COMPLEX', targetId: '1',
+    targetName: null, activeMembers: 2 }], page: 0, totalElements: 1, totalPages: 1, asOf: '2026-10-14T00:00:00Z' } }))
+  vi.stubGlobal('fetch', fetcher)
+  const controller = new AbortController()
+  expect((await loadNotificationTargets('page=0', controller.signal)).items[0]?.activeMembers).toBe(2)
+  expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/targets?page=0'),
+    expect.objectContaining({ credentials: 'include', signal: controller.signal }))
+})
+
+it.each([
+  { day: '2026-02-31', activations: 1, cancellations: 0 },
+  { day: '2026-10-14', activations: -1, cancellations: 0 },
+  { day: '2026-10-14', activations: null, cancellations: 0 },
+])('잘못된 날짜나 집계값을 정상 추이로 표시하지 않는다', async point => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ data: {
+    collectionStartedAt: null, asOf: '2026-10-14T00:00:00Z', days: [point],
+  } })))
+  await expect(loadNotificationTrend('days=7', new AbortController().signal)).rejects.toThrow('응답이 올바르지 않습니다.')
 })

@@ -3,9 +3,10 @@ import { Link, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { ListPagination } from '../management/ListPagination'
 import { providerLabels } from '../users/presentation'
-import { isIdentifier, isTargetIdentifier, isStatus, isTarget, loadNotificationSubscriptions, statusLabels, targetLabels,
+import { isIdentifier, isTargetIdentifier, isStatus, isTarget, isReview, reviewLabels, loadNotificationSubscriptions, statusLabels, targetLabels,
   type NotificationItem, type NotificationPage } from './api'
 import styles from './Notifications.module.css'
+import { NotificationTargetOverview, NotificationTrendOverview } from './NotificationInsights'
 
 const timestamp = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
@@ -20,8 +21,16 @@ function targetLink(item: NotificationItem) {
   return null
 }
 export function NotificationManagementPage() {
+  const [params] = useSearchParams()
+  const view = params.get('view') ?? 'list'
+  const views = [ ['list', '신청 목록', ''], ['targets', '대상별 현황', '?view=targets'],
+    ['review', '확인 필요', '?view=review&status=ALL&review=ANY'], ['trend', '신청·취소 추이', '?view=trend'] ] as const
   return <section className={styles.page}><header className={styles.heading}><h1>알림 신청 관리</h1></header>
-    <NotificationSubscriptions /></section>
+    <nav className={styles.tabs} aria-label="알림 관리 보기">{views.map(([key, label, query]) =>
+      <Link key={key} aria-current={view === key ? 'page' : undefined} to={`/admin/notification-subscriptions${query}`}>{label}</Link>)}</nav>
+    {view === 'targets' ? <NotificationTargetOverview /> : view === 'trend' ? <NotificationTrendOverview />
+      : view === 'list' || view === 'review' ? <NotificationSubscriptions key={view} />
+        : <p role="alert">화면 조건을 확인해 주세요. 신청 목록에서 다시 시작할 수 있습니다.</p>}</section>
 }
 export function NotificationSubscriptions({ userId }: { userId?: string }) {
   const SectionHeading = userId ? 'h3' : 'h2'
@@ -30,27 +39,29 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
   const form = useRef<HTMLFormElement>(null)
   const pageKey = userId ? 'notificationPage' : 'page', statusKey = userId ? 'notificationStatus' : 'status'
   const status = params.get(statusKey) ?? (userId ? 'ALL' : 'ACTIVE')
+  const review = userId ? 'ALL' : params.get('review') ?? (params.get('view') === 'review' ? 'ANY' : 'ALL')
+  const groupTarget = !userId && params.get('groupTarget') === 'true'
   const pageValue = params.get(pageKey) ?? '0', page = Number(pageValue)
   const targetType = userId ? '' : params.get('targetType') ?? '', targetId = userId ? '' : params.get('targetId') ?? ''
   const [keyword, setKeyword] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [loaded, setLoaded] = useState<{ key: string; filters: string; value: NotificationPage } | null>(null)
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null)
-  const valid = isStatus(status) && (!targetType || isTarget(targetType)) && (!targetId || isTargetIdentifier(targetId))
+  const valid = isStatus(status) && isReview(review) && (!targetType || isTarget(targetType)) && (!targetId || isTargetIdentifier(targetId))
     && (!userId || isIdentifier(userId)) && /^\d+$/.test(pageValue) && Number.isSafeInteger(page)
-    && page <= 2147483647 && keyword.length <= 200
-  const filters = JSON.stringify([userId, status, targetType, targetId, keyword])
+    && page <= 2147483647 && keyword.length <= 200 && (!params.has('groupTarget') || ['true', 'false'].includes(params.get('groupTarget') ?? ''))
+  const filters = JSON.stringify([userId, status, targetType, targetId, keyword, review, groupTarget])
   const key = JSON.stringify([filters, pageValue, attempt])
   const data = valid && loaded?.filters === filters ? loaded.value : null
   const pending = valid && loaded?.key !== key && failure?.key !== key
   const error = valid ? failure?.key === key ? failure.message : '' : '검색 조건을 확인해 주세요.'
   const routeParams = new URLSearchParams()
-  for (const name of ['status', 'targetType', 'targetId', 'page']) {
+  for (const name of ['view', 'status', 'targetType', 'targetId', 'page', 'review', 'groupTarget']) {
     const value = params.get(name)
     if (value) routeParams.set(name, value)
   }
   const returnTo = `/admin/notification-subscriptions${routeParams.size ? `?${routeParams}` : ''}`
-  const hasFilters = Boolean(keyword || targetType || targetId || status !== (userId ? 'ALL' : 'ACTIVE'))
+  const hasFilters = Boolean(keyword || targetType || targetId || review !== 'ALL' || status !== (userId ? 'ALL' : 'ACTIVE'))
 
   function resetFilters() {
     form.current?.reset()
@@ -70,6 +81,8 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
     if (keyword) query.set('keyword', keyword)
     if (targetType) query.set('targetType', targetType)
     if (targetId) query.set('targetId', targetId)
+    if (review !== 'ALL') query.set('review', review)
+    if (groupTarget) query.set('groupTarget', 'true')
     void loadNotificationSubscriptions(query, controller.signal, userId).then(value => {
       if (controller.signal.aborted) return
       if (value.totalPages > 0 && page >= value.totalPages) {
@@ -82,7 +95,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
         message: cause instanceof Error ? cause.message : '알림 신청 목록을 불러오지 못했습니다.' })
     })
     return () => controller.abort()
-  }, [valid, key, filters, userId, page, pageKey, status, keyword, targetType, targetId, setParams])
+  }, [valid, key, filters, userId, page, pageKey, status, keyword, targetType, targetId, review, groupTarget, setParams])
 
   return <section className={styles.panel} aria-label={userId ? '회원 알림 신청' : '알림 신청 조회'}>
     {userId ? <h2>알림 신청</h2> : null}
@@ -101,8 +114,11 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       setKeyword(String(values.get('keyword') ?? '').trim())
       setParams(current => {
         const next = userId ? new URLSearchParams(current) : new URLSearchParams()
+        if (!userId && current.get('view') === 'review') next.set('view', 'review')
+        if (groupTarget) next.set('groupTarget', 'true')
         next.delete(pageKey)
         next.set(statusKey, String(values.get('status') ?? 'ACTIVE'))
+        if (!userId) next.set('review', String(values.get('review') ?? 'ALL'))
         for (const name of ['targetType', 'targetId']) {
           const value = String(values.get(name) ?? '').trim()
           if (!userId && value) next.set(name, value)
@@ -117,14 +133,17 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       </> : null}
       <label>신청 상태<select name="status" defaultValue={status}>{Object.entries(statusLabels).map(([value, label]) =>
         <option key={value} value={value}>{label}</option>)}</select></label>
+      {!userId ? <label>확인 항목<select name="review" defaultValue={review}>{Object.entries(reviewLabels).map(([value, label]) =>
+        <option key={value} value={value}>{label}</option>)}</select></label> : null}
       <div className={styles.actions}><Button data-design-system type="submit">검색</Button><button type="button" onClick={resetFilters}>초기화</button></div>
       {!userId ? <details className={styles.advanced} open={Boolean(targetId) || undefined}>
         <summary>상세 검색</summary>
         <div><label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19}
           pattern="[0-9]{1,19}" aria-describedby={`${helpId}-target`} placeholder="예: 11" /></label>
-          <p id={`${helpId}-target`}>지역 코드 또는 단지·공고 ID</p></div>
+          <p id={`${helpId}-target`}>지역 코드 또는 단지·공고 ID{groupTarget ? ' · 같은 대상의 이전 코드·선행 0 신청도 포함' : ''}</p></div>
       </details> : null}
     </form>
+    {review !== 'ALL' ? <p className={styles.meta}>기록이 없는 과거 신청도 포함됩니다. 이메일 미제공은 정상이며 확인 필요 항목으로 분류하지 않습니다.</p> : null}
     </div>
     {error ? <div className={styles.error} role="alert"><p>{error}</p>{valid ? <button type="button"
       onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button> : null}</div> : null}
@@ -137,6 +156,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
         {!userId && isTarget(targetType) ? <li>대상: {targetLabels[targetType]}</li> : null}
         {keyword ? <li>신청자: {keyword}</li> : null}
         {targetId ? <li>대상 ID: {targetId}</li> : null}
+        {review !== 'ALL' && isReview(review) ? <li>확인: {reviewLabels[review]}</li> : null}
       </ul> : null}
       {pending ? <p role="status">알림 신청 목록을 불러오는 중…</p> : null}
       {data?.items.length ? <div className={styles.scroll} role="region" tabIndex={0} aria-label="알림 신청 목록 스크롤">

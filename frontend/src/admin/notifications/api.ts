@@ -15,6 +15,11 @@ export type NotificationPage = {
 }
 export const statusLabels = { ALL: '전체 상태', ACTIVE: '활성', CANCELLED: '취소', EXPIRED: '만료' } as const
 export const targetLabels = { REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' } as const
+export const reviewLabels = { ALL: '전체 신청', ANY: '확인 항목 전체',
+  TARGET_UNAVAILABLE: '대상 확인 불가', REQUEST_DATE_UNKNOWN: '신청일 기록 없음' } as const
+export function isReview(value: unknown): value is keyof typeof reviewLabels {
+  return typeof value === 'string' && Object.hasOwn(reviewLabels, value)
+}
 export function isStatus(value: unknown): value is keyof typeof statusLabels {
   return value === 'ALL' || value === 'ACTIVE' || value === 'CANCELLED' || value === 'EXPIRED'
 }
@@ -61,4 +66,42 @@ export async function loadNotificationSubscriptions(
     totalElements: value.totalElements, totalPages: value.totalPages, summary: {
       activeMembers: value.summary.activeMembers, activeSubscriptions: value.summary.activeSubscriptions, asOf: value.summary.asOf,
     } }
+}
+
+export type NotificationTargets = { items: { targetType: NotificationTarget; targetId: string;
+  targetName: string | null; activeMembers: number }[]; page: number; totalElements: number; totalPages: number; asOf: string }
+export type NotificationTrend = { collectionStartedAt: string | null; asOf: string;
+  days: { day: string; activations: number | null; cancellations: number | null }[] }
+
+export async function loadNotificationTargets(query: string, signal: AbortSignal): Promise<NotificationTargets> {
+  const value = await requestManagementApi(`/api/admin/notification-subscriptions/targets?${query}`, 'GET', undefined, signal)
+  if (!isRecord(value) || !Array.isArray(value.items) || !count(value.page) || !count(value.totalElements)
+    || !count(value.totalPages) || !instant(value.asOf)) throw new Error('대상별 현황 응답이 올바르지 않습니다.')
+  const items = value.items.map((target: unknown) => {
+    if (!isRecord(target) || !isTarget(target.targetType) || !isTargetIdentifier(target.targetId)
+      || (target.targetName !== null && typeof target.targetName !== 'string') || !count(target.activeMembers)) {
+      throw new Error('대상별 현황 응답이 올바르지 않습니다.')
+    }
+    return { targetType: target.targetType, targetId: target.targetId, targetName: target.targetName,
+      activeMembers: target.activeMembers }
+  })
+  return { items, page: value.page, totalElements: value.totalElements, totalPages: value.totalPages, asOf: value.asOf }
+}
+
+export async function loadNotificationTrend(query: string, signal: AbortSignal): Promise<NotificationTrend> {
+  const value = await requestManagementApi(`/api/admin/notification-subscriptions/trend?${query}`, 'GET', undefined, signal)
+  if (!isRecord(value) || !Array.isArray(value.days) || !instant(value.asOf)
+    || (value.collectionStartedAt !== null && !instant(value.collectionStartedAt))) {
+    throw new Error('신청·취소 추이 응답이 올바르지 않습니다.')
+  }
+  const days = value.days.map((point: unknown) => {
+    if (!isRecord(point) || typeof point.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(point.day)
+      || !Number.isFinite(Date.parse(point.day)) || !((point.activations === null && point.cancellations === null)
+      || (count(point.activations) && count(point.cancellations)))) {
+      throw new Error('신청·취소 추이 응답이 올바르지 않습니다.')
+    }
+    if (new Date(point.day).toISOString().slice(0, 10) !== point.day) throw new Error('신청·취소 추이 응답이 올바르지 않습니다.')
+    return { day: point.day, activations: point.activations as number | null, cancellations: point.cancellations as number | null }
+  })
+  return { days, collectionStartedAt: value.collectionStartedAt, asOf: value.asOf }
 }
