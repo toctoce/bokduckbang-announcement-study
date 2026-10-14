@@ -4,6 +4,10 @@ import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.dto.AdminNotificationFilter;
 import com.toadzip.backend.interest.dto.AdminNotificationPage;
 import com.toadzip.backend.interest.dto.AdminNotificationPage.Item;
+import com.toadzip.backend.interest.dto.AdminNotificationTargets;
+import com.toadzip.backend.interest.dto.AdminNotificationTrend;
+import com.toadzip.backend.interest.repository.AdminNotificationTargetRepository;
+import com.toadzip.backend.interest.repository.NotificationDailyActivityRepository;
 import com.toadzip.backend.interest.repository.AdminNotificationQueryRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import com.toadzip.backend.region.repository.RegionSearchRepository;
@@ -26,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminNotificationQueryService {
 
     private final AdminNotificationQueryRepository repository;
+    private final AdminNotificationTargetRepository targets;
+    private final NotificationDailyActivityRepository dailyActivity;
     private final UserRepository users;
     private final RegionSearchRepository regions;
     private final RegionCodeResolver regionCodes;
@@ -36,20 +42,48 @@ public class AdminNotificationQueryService {
             throw new AdminUserNotFoundException();
         }
         AdminNotificationFilter normalized = new AdminNotificationFilter(
-                filter.keyword().strip(), filter.userId(), filter.targetType(), filter.targetId(), filter.status());
+                filter.keyword().strip(), filter.userId(), filter.targetType(), filter.targetId(), filter.status(),
+                filter.review(), filter.groupTarget());
+        Map<String, String> names = regionNames();
         AdminNotificationPage result = repository.search(normalized, page, size,
-                clock.instant().truncatedTo(ChronoUnit.MICROS));
-        return withRegionNames(result);
+                clock.instant().truncatedTo(ChronoUnit.MICROS), regionGroups());
+        return withRegionNames(result, names);
     }
 
-    private AdminNotificationPage withRegionNames(AdminNotificationPage result) {
-        if (result.items().stream().noneMatch(item -> item.targetType() == NotificationTargetType.REGION)) {
-            return result;
-        }
-        Map<String, String> names = regions.findByKeyword("").stream()
+    public AdminNotificationTargets targets(NotificationTargetType type, int page, int size) {
+        Map<String, String> names = regionNames();
+        AdminNotificationTargets result = targets.search(type, page, size,
+                clock.instant().truncatedTo(ChronoUnit.MICROS), regionGroups());
+        List<AdminNotificationTargets.Target> items = result.items().stream().map(target -> {
+            if (target.targetType() != NotificationTargetType.REGION) {
+                return target;
+            }
+            return new AdminNotificationTargets.Target(target.targetType(), target.targetId(),
+                    names.get(target.targetId()), target.activeMembers());
+        }).toList();
+        return new AdminNotificationTargets(items, result.page(), result.totalElements(), result.totalPages(),
+                result.asOf());
+    }
+
+    public AdminNotificationTrend trend(int days) {
+        return dailyActivity.trend(days, clock.instant().truncatedTo(ChronoUnit.MICROS));
+    }
+
+    private Map<String, String> regionGroups() {
+        return regions.findByKeyword("").stream()
+                .flatMap(region -> equivalentCodes(region).stream()
+                        .map(code -> Map.entry(code, region.regionCode())))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    private Map<String, String> regionNames() {
+        return regions.findByKeyword("").stream()
                 .flatMap(region -> equivalentCodes(region).stream()
                         .map(code -> Map.entry(code, region.displayName())))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    private AdminNotificationPage withRegionNames(AdminNotificationPage result, Map<String, String> names) {
         List<Item> items = result.items().stream().map(item -> regionName(item, names)).toList();
         return new AdminNotificationPage(items, result.page(), result.hasNext(), result.totalElements(),
                 result.totalPages(), result.summary());

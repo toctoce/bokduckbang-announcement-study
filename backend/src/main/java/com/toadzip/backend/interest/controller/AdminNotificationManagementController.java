@@ -2,9 +2,12 @@ package com.toadzip.backend.interest.controller;
 
 import com.toadzip.backend.global.response.ApiResponse;
 import com.toadzip.backend.interest.domain.AdminNotificationStatus;
+import com.toadzip.backend.interest.domain.AdminNotificationReview;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.dto.AdminNotificationFilter;
 import com.toadzip.backend.interest.dto.AdminNotificationPage;
+import com.toadzip.backend.interest.dto.AdminNotificationTargets;
+import com.toadzip.backend.interest.dto.AdminNotificationTrend;
 import com.toadzip.backend.interest.service.AdminNotificationQueryService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -31,9 +34,12 @@ public class AdminNotificationManagementController {
             @RequestParam(required = false) NotificationTargetType targetType,
             @RequestParam(defaultValue = "") @Pattern(regexp = "^$|[0-9]{1,19}") String targetId,
             @RequestParam(defaultValue = "ACTIVE") AdminNotificationStatus status,
+            @RequestParam(defaultValue = "ALL") AdminNotificationReview review,
+            @RequestParam(defaultValue = "false") boolean groupTarget,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return response(new AdminNotificationFilter(keyword, userId, targetType, targetId, status), page, size);
+        return response(new AdminNotificationFilter(keyword, userId, targetType, targetId, status, review, groupTarget),
+                page, size);
     }
 
     @GetMapping("/api/admin/users/{userId}/notification-subscriptions")
@@ -42,7 +48,24 @@ public class AdminNotificationManagementController {
             @RequestParam(defaultValue = "ALL") AdminNotificationStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return response(new AdminNotificationFilter("", userId, null, "", status), page, size);
+        return response(new AdminNotificationFilter("", userId, null, "", status, AdminNotificationReview.ALL, false),
+                page, size);
+    }
+
+    @GetMapping("/api/admin/notification-subscriptions/targets")
+    public ResponseEntity<ApiResponse<AdminNotificationTargets>> targets(
+            @RequestParam(required = false) NotificationTargetType targetType,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new ApiResponse<>(service.targets(targetType, page, size)));
+    }
+
+    @GetMapping("/api/admin/notification-subscriptions/trend")
+    public ResponseEntity<ApiResponse<AdminNotificationTrend>> trend(
+            @RequestParam(defaultValue = "30") @Min(1) @Max(90) int days) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new ApiResponse<>(service.trend(days)));
     }
 
     private ResponseEntity<ApiResponse<AdminNotificationPage>> response(
